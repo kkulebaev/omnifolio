@@ -1177,4 +1177,233 @@ Mapper в `internal/server/handlers.go`:
 11. Theme toggle dark/light работает, persist в localStorage.
 12. Logout → редирект /login + cleared cache.
 
+---
+
+## 19. Решения M2 (детализация)
+
+Решения для T-Invest интеграции (вопросы 38–42). Дополняют §15 для broker-source
+поддержки.
+
+### 19.1. T-Invest клиент и source-архитектура
+
+- **Клиент**: официальный SDK `github.com/russianinvestments/invest-api-go-sdk`.
+  Hand-rolled gRPC из `.proto` — отвергнуто как лишний maintenance.
+- **Sub-accounts (1:1 mapping)**: один Omnifolio account = один T-Invest
+  sub-account (брокерский / ИИС / премиум). При создании юзер вводит токен →
+  выбирает один sub-account через UI → сохраняем `tinvestAccountId` в credentials.
+- **Token type**: рекомендуем read-only invest token. Не enforce-им (T-Invest
+  не возвращает права в API), но в UI/README есть warning.
+- **Окружение**: только production. Sandbox не нужен (юзер хочет видеть свои
+  позиции). Тесты — через mock gRPC stubs.
+- **Расположение**: `internal/source/tinvest/`. Параллельно `internal/source/bybit/`
+  для M3.
+
+**Интерфейсы** (новые в `internal/source/source.go`):
+
+```go
+type Position struct {
+    NativeInstrumentID string          // FIGI for tinvest, symbol for bybit
+    Quantity           decimal.Decimal
+}
+
+type InstrumentSeed struct {
+    Ticker     string
+    AssetClass string
+    Currency   string
+    Name       string
+}
+
+type Price struct {
+    Amount    decimal.Decimal
+    Currency  string
+    FetchedAt time.Time
+}
+
+type PositionSource interface {
+    Sync(ctx context.Context, creds []byte, sourceAccountID string) ([]Position, error)
+    ResolveInstrument(ctx context.Context, creds []byte, nativeID string) (InstrumentSeed, error)
+}
+
+type PriceProvider interface {
+    GetPrices(ctx context.Context, creds []byte, instruments []ResolvedInstrument) (map[uuid.UUID]Price, error)
+}
+```
+
+`account.Service` инжектит `map[string]PositionSource` (key = source_type).
+
+### 19.2. Account creation API (для tinvest)
+
+- **Two-step preview flow**:
+  1. `POST /accounts/tinvest/preview` `{token}` → 200 `{subAccounts: [{id, name, type}]}` или 422 `{detail: "Invalid token"}`.
+  2. `POST /accounts` с `oneOf` discriminated body — для tinvest:
+     `{name, type:"tinvest", token, tinvestAccountId}` → 201 + Account
+     с `lastSyncStatus='pending'`.
+- **OpenAPI schema**: `oneOf` с `discriminator: type`:
+  - `CreateManualAccountRequest`: `{name, type:"manual"}`
+  - `CreateTInvestAccountRequest`: `{name, type:"tinvest", token, tinvestAccountId}`
+- **Validation**: token проверяется на обоих шагах (preview + create) через
+  `GetInfo()` или `GetAccounts()`. Защита от race "токен отозвали между шагами".
+- **Credentials storage**: AES-GCM encrypted JSON `{"token":"...", "tinvestAccountId":"..."}`
+  в `account_credentials.ciphertext`. AAD = account_id.bytes() (как в M1.2).
+- **UI flow**: tab toggle в `CreateAccountDialog`:
+  - Tab "Manual": поле name → submit.
+  - Tab "T-Invest": шаг 1 (token) → шаг 2 (radio sub-accounts + name) → submit.
+- **Sub-account display**: `account.name` (юзеровское имя из Tinkoff) +
+  badge русифицированного типа (Брокерский / ИИС / Премиум).
+
+### 19.3. Sync semantics
+
+- **Triggers** (все три):
+  1. **At account creation**: async фоновая горутина запускает первый sync
+     сразу после INSERT. Account возвращается с `lastSyncStatus='pending'`.
+  2. **On-demand**: `POST /accounts/:id/sync` — синхронный, ждёт результат до 30s.
+     Возвращает обновлённый account.
+  3. **Cron**: `0 * * * *` (каждый час). Для всех accounts с
+     `source_type IN ('tinvest','bybit')`.
+- **Sync logic** (применение нового снимка):
+  ```sql
+  BEGIN;
+  -- UPSERT всех текущих позиций
+  INSERT INTO positions (account_id, instrument_id, quantity)
+  VALUES ... ON CONFLICT (account_id, instrument_id)
+  DO UPDATE SET quantity = EXCLUDED.quantity, updated_at = now();
+
+  -- Удалить позиции, которых больше нет
+  DELETE FROM positions
+  WHERE account_id = $1 AND instrument_id != ALL($2::uuid[]);
+
+  -- Обновить статус
+  UPDATE accounts
+  SET last_synced_at = now(),
+      last_sync_status = 'success',
+      last_sync_error = NULL
+  WHERE id = $1;
+  COMMIT;
+  ```
+- **Atomicity**: одна транзакция, на error → rollback, отдельной транзакцией
+  пишем `last_sync_status='failed'` + `last_sync_error`.
+- **Concurrency**: `pg_try_advisory_xact_lock(hashtext('sync:'||account_id))`.
+  Если lock занят — sync пропускается с `last_sync_skipped` log.
+- **Inline price fetch**: после positions UPSERT собираем uniq instrument_id
+  → batch `MarketDataService.GetLastPrices(figis)` → UPSERT в `prices`.
+  Один sync-проход даёт и позиции, и актуальные цены.
+- **Error mapping**:
+  - gRPC `Unauthenticated` → status=failed, error="Токен отклонён T-Invest. Удалите и создайте аккаунт заново."
+  - gRPC `ResourceExhausted` → status=failed, error="Превышен лимит запросов T-Invest. Следующий sync через час."
+  - `context.DeadlineExceeded` → status=failed, error="Превышено время ожидания. Попробуйте позже."
+  - default → status=failed, error="Ошибка синхронизации: <message>"
+
+### 19.4. Instrument resolution + asset classes
+
+- **Resolution flow** на каждую позицию из sync:
+  1. SELECT `instrument_external_ids` WHERE `(source='tinvest', native_id=figi)`.
+  2. Found → return `instrument_id`.
+  3. Not found → gRPC `InstrumentsService.GetInstrumentBy(IdType=FIGI, id=figi)`.
+  4. Map T-Invest InstrumentInfo → InstrumentSeed (см. ниже).
+  5. INSERT `instruments` + INSERT `instrument_external_ids`. Race на 23505 →
+     повторный SELECT.
+- **Asset class mapping**:
+  ```
+  share + class_code in MOEX list (TQBR, TQTF, ...)  → ru_stock
+  share + class_code in SPB list (SPBXM, MBSE, ...)  → us_stock
+  bond                                                → ru_bond
+  etf  + MOEX class_code                              → ru_etf
+  etf  + SPB class_code                               → us_etf
+  currency                                            → cash
+  futures, option, sp                                 → SKIP (warning)
+  ```
+- **MOEX class codes** (hardcoded list): `TQBR, TQTF, TQOB, TQOE, TQBD, TQIF,
+  EQRP_INFO, FQBR, MXBD, ...`. Расширяется по факту encounters.
+- **Cash positions**: T-Invest `instrument_type='currency'` (RUB, USD, EUR на
+  счёте) — track как отдельный asset_class:
+  - Миграция `0003_asset_class_cash.sql`: добавить `'cash'` в CHECK constraint.
+  - При первом resolve cash-instrument: ticker=RUB/USD/EUR, asset_class=cash,
+    currency=RUB/USD/EUR, name="Российский рубль" / "Доллар США" / "Евро".
+  - Цена = 1.00 в нативной валюте (UPSERT в `prices`). Конвертация в display
+    currency через FX как обычно.
+- **Skip with warning**: futures/options/sp/неизвестные types → log.Warn,
+  не создаём instrument, не добавляем в positions. Sync продолжается.
+  При нулевом прогрессе sync → status=success с пустым `last_sync_skipped_count`
+  (counter не вводим в M2; просто warning в логи).
+
+### 19.5. Миграции для M2
+
+**`0003_asset_class_cash.sql`**:
+```sql
+-- +goose Up
+ALTER TABLE instruments DROP CONSTRAINT instruments_asset_class_check;
+ALTER TABLE instruments ADD CONSTRAINT instruments_asset_class_check
+  CHECK (asset_class IN ('ru_stock','ru_bond','ru_etf','us_stock','us_etf','crypto','cash'));
+
+-- +goose Down
+ALTER TABLE instruments DROP CONSTRAINT instruments_asset_class_check;
+ALTER TABLE instruments ADD CONSTRAINT instruments_asset_class_check
+  CHECK (asset_class IN ('ru_stock','ru_bond','ru_etf','us_stock','us_etf','crypto'));
+```
+
+Других миграций в M2 не требуется — `account_credentials.ciphertext` уже есть,
+`accounts.last_sync_*` тоже.
+
+### 19.6. PriceProvider scope
+
+- **TInvestPriceProvider** обслуживает **только** инструменты с
+  `instrument_external_ids.source='tinvest'`. Manual instruments — игнорируются
+  (без цен до тех пор, пока не появится подходящий provider).
+- **Per-account token**: используем токен того аккаунта, для которого идёт
+  sync (он в памяти расшифрован). Нет глобального системного токена.
+- **Future**: M3 добавит `CoinGeckoPriceProvider` для `asset_class='crypto'` —
+  no-auth public API.
+- **Cash prices**: при resolve cash-instrument сразу UPSERT price=1.00. Не
+  обновляется через PriceProvider (нет смысла).
+
+### 19.7. Token rotation
+
+В M2 — **hard recreate**: юзер удаляет аккаунт (CASCADE → positions), создаёт
+заново с новым токеном. Простота важнее непотери account_id-истории.
+
+В M5+: `PUT /accounts/:id/credentials` (только token) если будет частая нужда.
+
+### 19.8. UI
+
+- **CreateAccountDialog** превращается в tab-based:
+  ```
+  ┌─ [Manual] [T-Invest] ─────────────────────────┐
+  │ T-Invest tab:                                  │
+  │   Step 1: Token input → "Далее"               │
+  │   Step 2: Radio sub-accounts + Name → "Создать"│
+  └────────────────────────────────────────────────┘
+  ```
+- **AccountDetailPage** — для tinvest показывает:
+  - Badge `lastSyncStatus`: pending=spinner, success="Sync 5 мин назад", failed=red icon + tooltip с error.
+  - Кнопка "Синхронизировать сейчас" → POST `/accounts/:id/sync` (синхронный, ждёт).
+  - На pending — auto-refetch query через 3s.
+- **DashboardPage** — без изменений (positions уже из tinvest sync видны).
+
+### 19.9. M2 acceptance
+
+1. На `/accounts` → CreateAccountDialog → Tab "T-Invest".
+2. Ввожу real T-Invest read-only token, нажимаю "Далее".
+3. Backend → preview → возвращает sub-accounts.
+4. Выбираю "Брокерский счёт", ввожу name "T-Invest Брокерский" → "Создать".
+5. POST /accounts → 201 с `lastSyncStatus='pending'`. Async sync стартует.
+6. UI на странице аккаунта показывает spinner.
+7. Через несколько секунд → status=success, появляются позиции (SBER, GAZP, USD на счёте, и т.д.).
+8. Дашборд показывает реальные позиции с актуальными ценами. Total в RUB конвертится в USD/EUR через FX.
+9. Нажимаю "Sync now" → синхронный refresh.
+10. Cron каждый час обновляет в фоне.
+11. Если токен реджектнут (тест: меняю в БД ciphertext на мусор) → next sync → status=failed + visible error.
+12. Удаляю аккаунт → CASCADE удаляет positions + credentials.
+
+### 19.10. Что НЕ в M2
+
+- US акции через other US-источник (Finnhub/Yahoo) — по дизайну отложено.
+  Если позиция US-stock пришла из T-Invest через СПБ — провайдер цены —
+  T-Invest. Если manual US-stock — без цены.
+- Параллелизм sync (errgroup) — sequential в M2.
+- Update credentials endpoint — hard recreate в M2.
+- WebSocket стримы цен — M5+.
+- Опции/фьючерсы/структурки — skip с warning.
+- last_sync_skipped_count counter — на M2 нет колонки.
+- Sandbox toggle — нет.
+
 
