@@ -60,26 +60,22 @@ const userInitials = computed(() => {
 </script>
 
 <template>
+  <!-- TODO(tw-arb): spacing px-[10px] py-[14px] py-[5px] py-[6px] p-[8px] pt-[4px] pb-[16px] mt-[18px] gap-[3px] gap-[8px] gap-[9px] | size w-[188px] w-[18px] w-[14px] w-[24px] h-[18px] h-[24px] h-[2px] | radius rounded-[1px|4px|5px|12px] | text text-[10px|11px|11.5px|12px|12.5px|13px] font-[inherit] tracking-[-0.01em] tracking-[0.07em] -->
   <aside
-    class="flex flex-col overflow-hidden border-r"
-    style="width: 188px; background-color: hsl(var(--background)); border-color: hsl(var(--border)); padding: 14px 10px;"
+    class="flex flex-col overflow-hidden border-r border-border bg-background w-[188px] px-[10px] py-[14px]"
   >
-    <div class="flex items-center gap-2" style="padding: 4px 8px 16px">
+    <div class="flex items-center gap-2 pt-[4px] px-[8px] pb-[16px]">
       <div
-        class="grid place-items-center text-white font-bold"
-        style="
-          width: 18px; height: 18px; border-radius: 4px;
-          background-color: hsl(var(--accent)); font-size: 10px;
-        "
+        class="grid place-items-center text-white font-bold w-[18px] h-[18px] rounded-[4px] bg-accent text-[10px]"
       >
         O
       </div>
-      <span class="font-semibold" style="font-size: 13px; letter-spacing: -0.01em">
+      <span class="font-semibold text-[13px] tracking-[-0.01em]">
         Omnifolio
       </span>
     </div>
 
-    <nav class="flex flex-col" style="gap: 1px">
+    <nav class="flex flex-col gap-px">
       <RouterLink
         v-for="n in navItems.filter((i) => i.enabled)"
         :key="n.id"
@@ -89,25 +85,12 @@ const userInitials = computed(() => {
       >
         <button
           @click="navigate"
-          class="flex items-center cursor-pointer text-left"
-          :style="{
-            background: isActive(n.to) ? 'hsl(var(--soft))' : 'transparent',
-            border: 'none',
-            color: isActive(n.to) ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))',
-            padding: '6px 8px',
-            borderRadius: '5px',
-            fontSize: '12.5px',
-            fontWeight: isActive(n.to) ? 500 : 400,
-            gap: '9px',
-            fontFamily: 'inherit',
-          }"
+          class="flex items-center cursor-pointer text-left border-none px-[8px] py-[6px] rounded-[5px] text-[12.5px] gap-[9px] font-[inherit]"
+          :class="isActive(n.to) ? 'bg-soft text-foreground font-medium' : 'bg-transparent text-muted-foreground font-normal'"
         >
           <span
-            :style="{
-              width: '14px',
-              color: isActive(n.to) ? 'hsl(var(--accent))' : 'hsl(var(--subtle))',
-              fontSize: '11px',
-            }"
+            class="w-[14px] text-[11px]"
+            :class="isActive(n.to) ? 'text-accent' : 'text-subtle'"
           >{{ n.icon }}</span>
           {{ n.label }}
         </button>
@@ -116,33 +99,16 @@ const userInitials = computed(() => {
         v-for="n in navItems.filter((i) => !i.enabled)"
         :key="n.id"
         disabled
-        class="flex items-center text-left"
-        style="
-          background: transparent;
-          border: none;
-          color: hsl(var(--subtle));
-          padding: 6px 8px;
-          border-radius: 5px;
-          font-size: 12.5px;
-          gap: 9px;
-          font-family: inherit;
-          cursor: not-allowed;
-        "
+        class="flex items-center text-left bg-transparent border-none text-subtle px-[8px] py-[6px] rounded-[5px] text-[12.5px] gap-[9px] font-[inherit] cursor-not-allowed"
       >
-        <span style="width: 14px; font-size: 11px">{{ n.icon }}</span>
+        <span class="w-[14px] text-[11px]">{{ n.icon }}</span>
         {{ n.label }}
       </button>
     </nav>
 
-    <div style="margin-top: 18px">
+    <div class="mt-[18px]">
       <div
-        class="flex justify-between uppercase"
-        style="
-          font-size: 10px;
-          color: hsl(var(--muted-foreground));
-          letter-spacing: 0.07em;
-          padding: 6px 8px;
-        "
+        class="flex justify-between uppercase text-[10px] text-muted-foreground tracking-[0.07em] px-[8px] py-[6px]"
       >
         <span>Аккаунты</span>
         <span class="num">{{ accountsWithShare.length }}</span>
@@ -156,80 +122,35 @@ const userInitials = computed(() => {
       >
         <button
           @click="navigate"
-          class="w-full text-left flex flex-col cursor-pointer"
-          style="
-            background: transparent;
-            border: none;
-            color: inherit;
-            padding: 5px 8px;
-            gap: 3px;
-            font-family: inherit;
-            border-radius: 4px;
-          "
+          class="w-full text-left flex flex-col cursor-pointer bg-transparent border-none text-inherit px-[8px] py-[5px] gap-[3px] font-[inherit] rounded-[4px]"
         >
-          <div class="flex justify-between" style="font-size: 12px">
-            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+          <div class="flex justify-between text-[12px]">
+            <span class="overflow-hidden text-ellipsis whitespace-nowrap">
               {{ a.shortName }}
             </span>
-            <span
-              class="num"
-              style="color: hsl(var(--muted-foreground)); font-size: 11px"
-            >
+            <span class="num text-muted-foreground text-[11px]">
               {{ (a.share * 100).toFixed(0) }}%
             </span>
           </div>
-          <div
-            style="
-              height: 2px;
-              background: hsl(var(--soft));
-              border-radius: 1px;
-              overflow: hidden;
-            "
-          >
+          <div class="h-[2px] bg-soft rounded-[1px] overflow-hidden">
             <div
-              :style="{
-                width: `${a.share * 100}%`,
-                height: '100%',
-                background: 'hsl(var(--accent))',
-                opacity: 0.7,
-              }"
+              class="h-full bg-accent opacity-70"
+              :style="{ width: `${a.share * 100}%` }"
             />
           </div>
         </button>
       </RouterLink>
     </div>
 
-    <div
-      class="flex items-center"
-      style="
-        margin-top: auto;
-        padding: 8px;
-        gap: 8px;
-        border-top: 1px solid hsl(var(--border));
-      "
-    >
+    <div class="flex items-center mt-auto p-[8px] gap-[8px] border-t border-border">
       <div
-        class="grid place-items-center font-semibold"
-        style="
-          width: 24px; height: 24px; border-radius: 12px;
-          background: hsl(var(--soft));
-          border: 1px solid hsl(var(--border));
-          font-size: 10px;
-        "
+        class="grid place-items-center font-semibold w-[24px] h-[24px] rounded-[12px] bg-soft border border-border text-[10px]"
       >
         {{ userInitials }}
       </div>
-      <div style="min-width: 0; font-size: 11.5px">
-        <div style="font-weight: 500">{{ auth.user?.email?.split("@")[0] ?? "—" }}</div>
-        <div
-          style="
-            color: hsl(var(--muted-foreground));
-            font-size: 10px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          "
-        >
+      <div class="min-w-0 text-[11.5px]">
+        <div class="font-medium">{{ auth.user?.email?.split("@")[0] ?? "—" }}</div>
+        <div class="text-muted-foreground text-[10px] overflow-hidden text-ellipsis whitespace-nowrap">
           {{ auth.user?.email ?? "" }}
         </div>
       </div>

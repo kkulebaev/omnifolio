@@ -174,8 +174,7 @@ const ASSET_CLASSES = Object.values(AssetClass);
           <select
             id="m-class"
             v-model="manual.assetClass"
-            class="w-full rounded-md border h-9 px-2 text-sm"
-            style="background-color: hsl(var(--background))"
+            class="w-full rounded-md border h-9 px-2 text-sm bg-background"
           >
             <option v-for="c in ASSET_CLASSES" :key="c" :value="c">{{ c }}</option>
           </select>

@@ -44,13 +44,13 @@ const CLASS_LABEL: Record<AssetClass, string> = {
   us_etf: "Американские ETF",
 };
 
-const CLASS_BADGE: Record<AssetClass, { label: string; tint: string }> = {
-  ru_stock: { label: "ru акция", tint: "rgba(201,100,66,0.12)" },
-  us_stock: { label: "us акция", tint: "rgba(90,130,180,0.14)" },
-  crypto: { label: "crypto", tint: "rgba(120,150,90,0.14)" },
-  ru_bond: { label: "ru обл", tint: "rgba(140,120,180,0.14)" },
-  ru_etf: { label: "ru etf", tint: "rgba(180,150,90,0.14)" },
-  us_etf: { label: "us etf", tint: "rgba(70,140,160,0.14)" },
+const CLASS_BADGE: Record<AssetClass, { label: string; tintClass: string }> = {
+  ru_stock: { label: "ru акция", tintClass: "bg-[rgba(201,100,66,0.12)]" },
+  us_stock: { label: "us акция", tintClass: "bg-[rgba(90,130,180,0.14)]" },
+  crypto: { label: "crypto", tintClass: "bg-[rgba(120,150,90,0.14)]" },
+  ru_bond: { label: "ru обл", tintClass: "bg-[rgba(140,120,180,0.14)]" },
+  ru_etf: { label: "ru etf", tintClass: "bg-[rgba(180,150,90,0.14)]" },
+  us_etf: { label: "us etf", tintClass: "bg-[rgba(70,140,160,0.14)]" },
 };
 
 const summaryCards = computed(() =>
@@ -69,13 +69,13 @@ const accountCount = computed(
   () => Object.keys(summary.value?.byAccount ?? {}).length,
 );
 
-function priceAgeStyle(d?: string | null, stale?: boolean): { color: string } {
-  if (!d || stale) return { color: "hsl(var(--neg))" };
+function priceAgeClass(d?: string | null, stale?: boolean): string {
+  if (!d || stale) return "text-neg";
   const ageSec = Math.abs(Date.now() - new Date(d).getTime()) / 1000;
-  if (ageSec < 300) return { color: "hsl(var(--pos))" };
-  if (ageSec < 1800) return { color: "hsl(var(--muted-foreground))" };
-  if (ageSec < 7200) return { color: "hsl(28 80% 52%)" };
-  return { color: "hsl(var(--neg))" };
+  if (ageSec < 300) return "text-pos";
+  if (ageSec < 1800) return "text-muted-foreground";
+  if (ageSec < 7200) return "text-[hsl(28_80%_52%)]";
+  return "text-neg";
 }
 
 const blurClass = computed(() => (ui.privacy ? "privacy-blur" : ""));
@@ -90,36 +90,27 @@ function valueDisplaySuffix(): string {
 </script>
 
 <template>
-  <div v-if="portfolio.isLoading.value" style="padding: 24px; opacity: 0.6">
+  <!-- TODO(tw-arb): spacing p-[24px] px-[12px|22px|24px|7px|8px] py-[2px|6px|7px|20px|48px] pt-[16px] pb-[28px] mt-[6px|8px] mb-[6px|8px|10px] ml-[6px] gap-[6px] | size w-[40px] min-w-[32px] h-[2px] h-[3px] | radius rounded-[1px|2px|3px|6px] | text text-[10px|10.5px|11px|11.5px|12px|12.5px|20px|30px] tracking-[-0.015em|-0.025em|0.05em|0.08em] leading-[1.05] | grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr] | color text-[hsl(28_80%_52%)] bg-[rgba(...)]×6 in CLASS_BADGE -->
+  <div v-if="portfolio.isLoading.value" class="p-[24px] opacity-60">
     Загрузка…
   </div>
-  <div
-    v-else-if="portfolio.isError.value"
-    style="padding: 24px; color: hsl(var(--neg))"
-  >
+  <div v-else-if="portfolio.isError.value" class="p-[24px] text-neg">
     Не удалось загрузить портфель
   </div>
   <template v-else>
     <div
-      class="grid"
-      style="grid-template-columns: minmax(280px, 1.6fr) 1fr 1fr 1fr; border-bottom: 1px solid hsl(var(--border));"
+      class="grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr] border-b border-border"
     >
-      <div style="padding: 20px 24px; border-right: 1px solid hsl(var(--border));">
-        <div
-          class="uppercase"
-          style="font-size: 10.5px; color: hsl(var(--muted-foreground)); letter-spacing: 0.08em; margin-bottom: 6px;"
-        >
+      <div class="px-[24px] py-[20px] border-r border-border">
+        <div class="uppercase text-[10.5px] text-muted-foreground tracking-[0.08em] mb-[6px]">
           Общая стоимость
         </div>
         <div
-          :class="['num', blurClass]"
-          style="font-size: 30px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.05;"
+          :class="['num', blurClass, 'text-[30px] font-semibold tracking-[-0.025em] leading-[1.05]']"
         >
           {{ formatCurrency(grandTotal, ui.displayCurrency) }}
         </div>
-        <div
-          style="font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: 6px;"
-        >
+        <div class="text-[11.5px] text-muted-foreground mt-[6px]">
           {{ positions.length }} позиций · {{ accountCount }} аккаунта · {{ formatDate(new Date()) }}
         </div>
       </div>
@@ -127,100 +118,67 @@ function valueDisplaySuffix(): string {
       <div
         v-for="(c, i) in summaryCards"
         :key="c.key"
-        :style="{
-          padding: '20px 22px',
-          borderRight: i < summaryCards.length - 1 ? '1px solid hsl(var(--border))' : 'none',
-        }"
+        class="px-[22px] py-[20px]"
+        :class="i < summaryCards.length - 1 ? 'border-r border-border' : ''"
       >
-        <div
-          class="uppercase"
-          style="font-size: 10.5px; color: hsl(var(--muted-foreground)); letter-spacing: 0.08em; margin-bottom: 6px;"
-        >
+        <div class="uppercase text-[10.5px] text-muted-foreground tracking-[0.08em] mb-[6px]">
           {{ c.label }}
         </div>
         <div
-          :class="['num', blurClass]"
-          style="font-size: 20px; font-weight: 600; letter-spacing: -0.015em;"
+          :class="['num', blurClass, 'text-[20px] font-semibold tracking-[-0.015em]']"
         >
           {{ formatCompact(c.value, ui.displayCurrency) }}
         </div>
-        <div class="flex items-center" style="gap: 6px; margin-top: 8px">
-          <div style="flex: 1; height: 2px; background: hsl(var(--soft)); border-radius: 1px;">
+        <div class="flex items-center gap-[6px] mt-[8px]">
+          <div class="flex-1 h-[2px] bg-soft rounded-[1px]">
             <div
-              :style="{
-                width: `${c.share * 100}%`,
-                height: '100%',
-                background: 'hsl(var(--accent))',
-                borderRadius: '1px',
-              }"
+              class="h-full bg-accent rounded-[1px]"
+              :style="{ width: `${c.share * 100}%` }"
             />
           </div>
-          <span
-            class="num"
-            style="font-size: 11px; color: hsl(var(--muted-foreground));"
-          >{{ (c.share * 100).toFixed(1) }}%</span>
+          <span class="num text-[11px] text-muted-foreground">{{ (c.share * 100).toFixed(1) }}%</span>
         </div>
       </div>
     </div>
 
-    <div style="padding: 16px 22px 28px">
-      <div class="flex items-center justify-between" style="margin-bottom: 10px">
-        <h2 style="font-size: 12.5px; font-weight: 600; margin: 0">
+    <div class="px-[22px] pt-[16px] pb-[28px]">
+      <div class="flex items-center justify-between mb-[10px]">
+        <h2 class="text-[12.5px] font-semibold m-0">
           Позиции
-          <span style="color: hsl(var(--muted-foreground)); font-weight: 400; margin-left: 6px;">
+          <span class="text-muted-foreground font-normal ml-[6px]">
             {{ positions.length }}
           </span>
         </h2>
-        <div
-          class="flex"
-          style="gap: 6px; font-size: 11px; color: hsl(var(--muted-foreground));"
-        >
-          <span
-            style="padding: 2px 8px; border-radius: 3px; border: 1px solid hsl(var(--border)); background: hsl(var(--panel));"
-          >Все классы</span>
-          <span
-            style="padding: 2px 8px; border-radius: 3px; border: 1px solid hsl(var(--border)); background: hsl(var(--panel));"
-          >Все аккаунты</span>
+        <div class="flex gap-[6px] text-[11px] text-muted-foreground">
+          <span class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel">Все классы</span>
+          <span class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel">Все аккаунты</span>
         </div>
       </div>
 
       <div
         v-if="positions.length === 0"
-        style="border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--panel)); padding: 48px 24px; text-align: center;"
+        class="border border-border rounded-[6px] bg-panel px-[24px] py-[48px] text-center"
       >
-        <p
-          style="font-size: 12.5px; color: hsl(var(--muted-foreground)); margin: 0 0 8px;"
-        >Нет позиций</p>
-        <p style="margin: 0; font-size: 12.5px">
+        <p class="text-[12.5px] text-muted-foreground mt-0 mx-0 mb-[8px]">Нет позиций</p>
+        <p class="m-0 text-[12.5px]">
           Зайди в
-          <RouterLink
-            to="/accounts"
-            style="color: hsl(var(--accent)); text-decoration: underline;"
-          >Аккаунты</RouterLink>
+          <RouterLink to="/accounts" class="text-accent underline">Аккаунты</RouterLink>
           и добавь первую.
         </p>
       </div>
 
       <div
         v-else
-        style="border: 1px solid hsl(var(--border)); border-radius: 6px; overflow: hidden; background: hsl(var(--panel));"
+        class="border border-border rounded-[6px] overflow-hidden bg-panel"
       >
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px">
+        <table class="w-full border-collapse text-[12px]">
           <thead>
-            <tr style="background: hsl(var(--background))">
+            <tr class="bg-background">
               <th
                 v-for="(h, i) in ['Тикер','Класс','Аккаунт','Кол-во','Цена','Обновлена','Стоимость','Доля']"
                 :key="h"
-                class="uppercase"
-                :style="{
-                  textAlign: i >= 3 ? 'right' : 'left',
-                  padding: '7px 12px',
-                  fontSize: '10.5px',
-                  fontWeight: 500,
-                  color: 'hsl(var(--muted-foreground))',
-                  letterSpacing: '0.05em',
-                  borderBottom: '1px solid hsl(var(--border))',
-                }"
+                class="uppercase px-[12px] py-[7px] text-[10.5px] font-medium text-muted-foreground tracking-[0.05em] border-b border-border"
+                :class="i >= 3 ? 'text-right' : 'text-left'"
               >{{ h }}</th>
             </tr>
           </thead>
@@ -228,78 +186,44 @@ function valueDisplaySuffix(): string {
             <tr
               v-for="(p, i) in positions"
               :key="`${p.accountId}/${p.instrumentId}`"
-              :style="{ borderTop: i ? '1px solid hsl(var(--border))' : 'none' }"
+              :class="i ? 'border-t border-border' : ''"
             >
-              <td
-                class="num"
-                style="padding: 6px 12px; font-weight: 600; font-size: 11.5px"
-              >{{ p.ticker }}</td>
-              <td style="padding: 6px 12px">
+              <td class="num px-[12px] py-[6px] font-semibold text-[11.5px]">{{ p.ticker }}</td>
+              <td class="px-[12px] py-[6px]">
                 <span
-                  class="num uppercase"
-                  :style="{
-                    fontSize: '10px',
-                    padding: '2px 7px',
-                    borderRadius: '3px',
-                    background: CLASS_BADGE[p.assetClass]?.tint ?? 'hsl(var(--soft))',
-                    color: 'hsl(var(--foreground))',
-                    letterSpacing: '0.05em',
-                  }"
+                  class="num uppercase text-[10px] px-[7px] py-[2px] rounded-[3px] text-foreground tracking-[0.05em]"
+                  :class="CLASS_BADGE[p.assetClass]?.tintClass ?? 'bg-soft'"
                 >{{ CLASS_BADGE[p.assetClass]?.label ?? p.assetClass }}</span>
               </td>
-              <td
-                style="padding: 6px 12px; color: hsl(var(--muted-foreground)); font-size: 11.5px;"
-              >{{ p.accountName }}</td>
-              <td
-                class="num"
-                style="padding: 6px 12px; text-align: right; font-size: 11.5px;"
-              >{{ formatQuantity(p.quantity) }}</td>
-              <td
-                class="num"
-                style="padding: 6px 12px; text-align: right; color: hsl(var(--muted-foreground)); font-size: 11.5px;"
-              >
+              <td class="px-[12px] py-[6px] text-muted-foreground text-[11.5px]">{{ p.accountName }}</td>
+              <td class="num px-[12px] py-[6px] text-right text-[11.5px]">{{ formatQuantity(p.quantity) }}</td>
+              <td class="num px-[12px] py-[6px] text-right text-muted-foreground text-[11.5px]">
                 <span v-if="p.price">{{ formatNumber(p.price, 2) }}</span>
-                <span v-else style="opacity: 0.5">—</span>
+                <span v-else class="opacity-50">—</span>
               </td>
               <td
-                class="num"
-                :style="{
-                  padding: '6px 12px',
-                  textAlign: 'right',
-                  fontSize: '11px',
-                  ...priceAgeStyle(p.priceFetchedAt, p.priceStale),
-                }"
+                class="num px-[12px] py-[6px] text-right text-[11px]"
+                :class="priceAgeClass(p.priceFetchedAt, p.priceStale)"
               >
                 {{ p.priceFetchedAt ? formatRelative(p.priceFetchedAt) : "—" }}
               </td>
               <td
-                :class="['num', blurClass]"
-                style="padding: 6px 12px; text-align: right; font-weight: 500; font-size: 12px;"
+                :class="['num', blurClass, 'px-[12px] py-[6px] text-right font-medium text-[12px]']"
               >
                 <span v-if="p.valueDisplay">
                   {{ formatNumber(p.valueDisplay, 0) }} {{ valueDisplaySuffix() }}
                 </span>
-                <span v-else style="opacity: 0.5">—</span>
+                <span v-else class="opacity-50">—</span>
               </td>
-              <td style="padding: 6px 12px; text-align: right">
-                <div class="inline-flex items-center justify-end" style="gap: 6px">
-                  <div
-                    style="width: 40px; height: 3px; background: hsl(var(--soft)); border-radius: 2px;"
-                  >
+              <td class="px-[12px] py-[6px] text-right">
+                <div class="inline-flex items-center justify-end gap-[6px]">
+                  <div class="w-[40px] h-[3px] bg-soft rounded-[2px]">
                     <div
-                      :style="{
-                        width: `${Math.min(100, shareOf(p.valueDisplay) * 4 * 100)}%`,
-                        height: '100%',
-                        background: 'hsl(var(--accent))',
-                        opacity: 0.75,
-                        borderRadius: '2px',
-                      }"
+                      class="h-full bg-accent opacity-75 rounded-[2px]"
+                      :style="{ width: `${Math.min(100, shareOf(p.valueDisplay) * 4 * 100)}%` }"
                     />
                   </div>
-                  <span
-                    class="num"
-                    style="color: hsl(var(--muted-foreground)); font-size: 10.5px; min-width: 32px; text-align: right;"
-                  >{{ (shareOf(p.valueDisplay) * 100).toFixed(1) }}%</span>
+                  <span class="num text-muted-foreground text-[10.5px] min-w-[32px] text-right">{{ (shareOf(p.valueDisplay) * 100).toFixed(1) }}%</span>
                 </div>
               </td>
             </tr>

@@ -4,15 +4,8 @@ import Sidebar from "./Sidebar.vue";
 </script>
 
 <template>
-  <div
-    class="grid"
-    style="
-      grid-template-columns: 188px 1fr;
-      height: 100vh;
-      background-color: hsl(var(--background));
-      color: hsl(var(--foreground));
-    "
-  >
+  <!-- TODO(tw-arb): grid-cols-[188px_1fr] -->
+  <div class="grid grid-cols-[188px_1fr] h-screen bg-background text-foreground">
     <Sidebar />
     <main class="flex flex-col overflow-hidden">
       <Header />
