@@ -21,21 +21,23 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile.dev
     container_name: omnifolio-api
+    working_dir: /workspace/apps/api
     ports:
       - "8080:8080"
     environment:
       PORT: 8080
       ENV: dev
       DATABASE_URL: postgres://omnifolio:omnifolio@postgres:5432/omnifolio?sslmode=disable
-      MASTER_KEY: ZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXNfYjY0Xw==
+      MASTER_KEY: AeDDfaoPcK181EBXGp3ciFOmuXtcj7ts0LnHP3OphgM
       LOG_LEVEL: debug
-      BOOTSTRAP_USER_EMAIL: dev@local
+      BOOTSTRAP_USER_EMAIL: dev@local.test
       BOOTSTRAP_USER_PASSWORD: devpassword12345
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./apps/api:/app
+      - ./apps/api:/workspace/apps/api
+      - ./api:/workspace/api:ro
       - go_modules:/go/pkg/mod
       - go_build:/root/.cache/go-build
 

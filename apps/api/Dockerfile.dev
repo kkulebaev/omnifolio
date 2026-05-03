@@ -1,14 +1,11 @@
 FROM golang:1.23-alpine
 
-WORKDIR /app
+RUN apk add --no-cache git curl \
+    && go install github.com/air-verse/air@v1.61.5 \
+    && go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0 \
+    && go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
 
-RUN apk add --no-cache git \
-    && go install github.com/air-verse/air@v1.61.5
-
-COPY go.mod go.sum* ./
-RUN go mod download || true
-
-COPY . .
+WORKDIR /workspace/apps/api
 
 EXPOSE 8080
 

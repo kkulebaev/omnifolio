@@ -1,0 +1,27 @@
+version: "2"
+sql:
+  - schema: "internal/storage/migrations"
+    queries: "internal/storage/queries"
+    engine: "postgresql"
+    gen:
+      go:
+        package: "storage"
+        out: "internal/storage"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        emit_json_tags: false
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              type: "uuid.NullUUID"
+              import: "github.com/google/uuid"
+          - db_type: "pg_catalog.numeric"
+            go_type: "github.com/shopspring/decimal.Decimal"
+          - db_type: "pg_catalog.numeric"
+            nullable: true
+            go_type:
+              type: "decimal.NullDecimal"
+              import: "github.com/shopspring/decimal"

@@ -11,7 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/config"
+	"github.com/kkulebaev/omnifolio/api/internal/crypto"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
@@ -34,6 +36,25 @@ func run() error {
 	slog.SetDefault(log)
 	log.Info("starting", "env", cfg.Env, "port", cfg.Port)
 
+	masterKey, err := crypto.ParseMasterKey(cfg.MasterKey)
+	if err != nil {
+		return fmt.Errorf("master key: %w", err)
+	}
+	encryptor, err := crypto.NewEncryptor(masterKey)
+	if err != nil {
+		return fmt.Errorf("encryptor: %w", err)
+	}
+	_ = encryptor // used in M2+ for broker credentials
+
+	idleTimeout, err := time.ParseDuration(cfg.SessionIdleTimeout)
+	if err != nil {
+		return fmt.Errorf("parse session idle timeout: %w", err)
+	}
+	absoluteTimeout, err := time.ParseDuration(cfg.SessionAbsoluteTimeout)
+	if err != nil {
+		return fmt.Errorf("parse session absolute timeout: %w", err)
+	}
+
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -49,14 +70,55 @@ func run() error {
 	}
 	log.Info("migrations applied")
 
+	queries := storage.New(pool)
+	authSvc := auth.NewService(queries, idleTimeout, absoluteTimeout)
+
+	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
+		Email:    cfg.BootstrapUserEmail,
+		Password: cfg.BootstrapUserPassword,
+	})
+	if err != nil {
+		return fmt.Errorf("bootstrap user: %w", err)
+	}
+	switch {
+	case created:
+		log.Info("bootstrap: user created", "email", cfg.BootstrapUserEmail)
+	case cfg.BootstrapUserEmail == "":
+		log.Warn("bootstrap skipped: BOOTSTRAP_USER_EMAIL not set; first user must be created via /auth/register (not yet implemented)")
+	default:
+		log.Info("bootstrap skipped: user exists", "email", cfg.BootstrapUserEmail)
+	}
+
 	sched := scheduler.New(log)
+	if err := sched.Register(rootCtx, scheduler.Job{
+		Name: "sessions-cleanup",
+		Spec: "0 * * * *",
+		Run: func(ctx context.Context) error {
+			n, err := authSvc.CleanupSessions(ctx)
+			if err == nil && n > 0 {
+				log.Info("sessions cleanup", "deleted", n)
+			}
+			return err
+		},
+	}); err != nil {
+		return fmt.Errorf("scheduler: %w", err)
+	}
 	sched.Start()
 	defer sched.Stop()
 
-	srv := server.New(pool, log)
+	handler, err := server.New(server.Deps{
+		Auth:   authSvc,
+		Logger: log,
+		Secure: cfg.IsProduction(),
+		MaxAge: int(absoluteTimeout / time.Second),
+	})
+	if err != nil {
+		return fmt.Errorf("server: %w", err)
+	}
+
 	httpSrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           srv.Handler(),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
