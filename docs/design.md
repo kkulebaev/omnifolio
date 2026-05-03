@@ -69,12 +69,11 @@ type PriceProvider interface {
 
 ## 3. Модель данных
 
-### 3.1. Двухуровневая модель Account / Portfolio
+### 3.1. Account как единица учёта
 
 - **Account** — физический счёт у источника (один T-Invest брокерский счёт = один Account).
   Содержит позиции, синкается из source.
-- **Portfolio** — логическая группа (например, «Долгосрок», «Спекуляции», «Всё вместе»).
-  В MVP тривиально мапится на Account-ы (M:N через `portfolio_accounts`).
+- Все агрегаты (`/portfolio`, дашборд) считаются по всем аккаунтам пользователя.
 
 ### 3.2. Канонический справочник инструментов
 
@@ -115,9 +114,6 @@ instrument_external_ids  (source, native_id, instrument_id, PRIMARY KEY(source, 
 positions  (account_id, instrument_id, quantity NUMERIC(38,18), updated_at)
 prices     (instrument_id, ts, price NUMERIC(20,8))
 fx_rates   (date, from_ccy, to_ccy, rate NUMERIC(20,10))
-
-portfolios          (id, user_id, name)
-portfolio_accounts  (portfolio_id, account_id)
 ```
 
 ---
@@ -208,7 +204,7 @@ portfolio_accounts  (portfolio_id, account_id)
 
 Разделение state:
 - **Server-state** (списки, дашборд, цены) — TanStack Query.
-- **Client-state** (выбранная валюта, выбранный portfolio, UI флаги) — Pinia.
+- **Client-state** (выбранная валюта, UI флаги) — Pinia.
 
 ---
 
@@ -316,8 +312,7 @@ omnifolio/
 - UI: индикация "stale at HH:MM" при отказе провайдера.
 
 ### M5 — Polish + prod (3–5 дней)
-- Pinia store для UI-state (selected currency, selected portfolio).
-- Portfolio CRUD (логические группы).
+- Pinia store для UI-state (selected currency).
 - Charts (asset_class breakdown, по аккаунтам).
 - `compose.prod.yml`, Caddy, MASTER_KEY ротация-инструкция в README.
 - Backup `pg_dump` cron на хосте.
@@ -364,7 +359,7 @@ omnifolio/
   `trigger_set_updated_at()`. `created_by`/`updated_by` — нет.
 - **Удаление**: hard delete через FK `ON DELETE CASCADE`. Soft delete не вводим.
 - **Naming**: snake_case в БД, plural таблицы (`accounts`, `positions`),
-  ассоциативные `<a>_<b>` (`portfolio_accounts`).
+  ассоциативные `<a>_<b>` (`instrument_external_ids`).
 
 ### 15.2. Auth flow
 
@@ -391,7 +386,7 @@ omnifolio/
 - **Envelope**: голый ресурс для single (`GET /accounts/:id` → `{id, name, ...}`),
   обёртка для list (`{items: [...], total, nextCursor}`).
 - **Pagination**: cursor-based для potentially-large (`positions`, `prices`),
-  без пагинации для small (`accounts`, `portfolios`).
+  без пагинации для small (`accounts`).
 - **IDs**: UUID-строка везде.
 - **Validation errors**: `fields` объект (`{"email": "invalid format"}`).
 - **HTTP status codes**: 200/201/204 success, 400 syntactic, 401 unauth,
@@ -422,7 +417,7 @@ apps/api/
     server/                     # chi mux, oapi-codegen impl, middleware, problem.go
     auth/                       # users + sessions + crypto, service + errors
     account/                    # accounts + credentials, service + errors
-    portfolio/                  # portfolios + portfolio_accounts
+    portfolio/                  # /portfolio aggregation (read-only)
     instrument/                 # canonical instruments + external_ids
     price/                      # PriceProvider interface, cache, providers/
     fx/                         # ЦБ FX cron + lookups
@@ -741,7 +736,7 @@ apps/web/src/
     positions.sql
     prices.sql
     fx_rates.sql
-    portfolios.sql
+    portfolio.sql
   ```
   Generated outputs — в `internal/storage/{users,sessions,…}.sql.go`,
   всё в одном `package storage`.
