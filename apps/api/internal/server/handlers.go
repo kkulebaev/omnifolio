@@ -473,7 +473,7 @@ func (s *serverImpl) GetPortfolio(ctx context.Context, req oapi.GetPortfolioRequ
 	if s.deps.PriceCache != nil {
 		insts := make([]pricecache.Instrument, 0, len(pf.Positions))
 		for _, p := range pf.Positions {
-			insts = append(insts, pricecache.Instrument{ID: p.InstrumentID, AssetClass: p.AssetClass})
+			insts = append(insts, pricecache.Instrument{ID: p.InstrumentID, AssetClass: p.AssetClass, Ticker: p.Ticker})
 		}
 		s.deps.PriceCache.RefreshStaleAsync(ctx, user.ID, insts)
 	}

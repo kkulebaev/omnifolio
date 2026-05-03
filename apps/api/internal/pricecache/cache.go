@@ -81,6 +81,9 @@ func (c *Cache) RefreshStaleAsync(rootCtx context.Context, userID uuid.UUID, ins
 type Instrument struct {
 	ID         uuid.UUID
 	AssetClass string
+	// Ticker is required for price-only providers keyed off asset_class
+	// (e.g. Finnhub for us_stock). Brokerage providers ignore it.
+	Ticker string
 }
 
 // pickStale returns instruments whose price is missing or older than ttl.
@@ -104,13 +107,54 @@ func (c *Cache) pickStale(ctx context.Context, instruments []Instrument) []Instr
 }
 
 func (c *Cache) refresh(ctx context.Context, userID uuid.UUID, instruments []Instrument) {
-	ids := c.claim(instruments)
-	defer c.release(ids)
-	if len(ids) == 0 {
+	claimed := c.claim(instruments)
+	defer c.release(idsOf(claimed))
+	if len(claimed) == 0 {
 		return
 	}
 
-	// Load user creds, group by source type.
+	// Split into price-only (keyed by asset_class, e.g. Finnhub for us_stock)
+	// and brokerage-backed (keyed by external_ids.source + creds).
+	var (
+		byAssetClass = make(map[string][]source.ResolvedInstrument)
+		brokerage    []Instrument
+	)
+	for _, inst := range claimed {
+		if _, ok := c.registry.PricesByAssetClass[inst.AssetClass]; ok {
+			if inst.Ticker == "" {
+				continue
+			}
+			byAssetClass[inst.AssetClass] = append(byAssetClass[inst.AssetClass], source.ResolvedInstrument{
+				InstrumentID:       inst.ID,
+				NativeInstrumentID: inst.Ticker,
+				AssetClass:         inst.AssetClass,
+			})
+			continue
+		}
+		brokerage = append(brokerage, inst)
+	}
+
+	for assetClass, insts := range byAssetClass {
+		provider := c.registry.PricesByAssetClass[assetClass]
+		prices, err := provider.GetPrices(ctx, nil, insts)
+		if err != nil {
+			c.log.Warn("pricecache: price-only provider failed", "asset_class", assetClass, "err", err)
+			continue
+		}
+		c.upsertPrices(ctx, prices)
+	}
+
+	if len(brokerage) > 0 {
+		c.refreshBrokerage(ctx, userID, brokerage)
+	}
+
+	c.log.Info("pricecache: refreshed", "user_id", userID, "instruments", len(claimed))
+}
+
+// refreshBrokerage handles instruments whose price comes from the broker that
+// reported them: needs the user's encrypted creds plus the source-native id
+// from instrument_external_ids.
+func (c *Cache) refreshBrokerage(ctx context.Context, userID uuid.UUID, instruments []Instrument) {
 	credsList, err := c.loader.LoadActive(ctx, userID)
 	if err != nil {
 		c.log.Warn("pricecache: load creds", "err", err)
@@ -119,14 +163,13 @@ func (c *Cache) refresh(ctx context.Context, userID uuid.UUID, instruments []Ins
 	credsBySource := make(map[string]AccountCreds, len(credsList))
 	for _, cr := range credsList {
 		if _, ok := credsBySource[cr.SourceType]; !ok {
-			credsBySource[cr.SourceType] = cr // keep first (any active is fine)
+			credsBySource[cr.SourceType] = cr
 		}
 	}
 
-	// Group ids by external source so we can call each provider in batch.
 	bySource := make(map[string][]source.ResolvedInstrument)
-	for _, id := range ids {
-		exts, err := c.q.ListExternalIDsForInstrument(ctx, id)
+	for _, inst := range instruments {
+		exts, err := c.q.ListExternalIDsForInstrument(ctx, inst.ID)
 		if err != nil {
 			continue
 		}
@@ -135,10 +178,11 @@ func (c *Cache) refresh(ctx context.Context, userID uuid.UUID, instruments []Ins
 				continue
 			}
 			bySource[ext.Source] = append(bySource[ext.Source], source.ResolvedInstrument{
-				InstrumentID:       id,
+				InstrumentID:       inst.ID,
 				NativeInstrumentID: ext.NativeID,
+				AssetClass:         inst.AssetClass,
 			})
-			break // first available source wins
+			break
 		}
 	}
 
@@ -147,35 +191,45 @@ func (c *Cache) refresh(ctx context.Context, userID uuid.UUID, instruments []Ins
 		if !ok {
 			continue
 		}
-		creds := credsBySource[sourceType].Plain
-		prices, err := provider.GetPrices(ctx, creds, insts)
+		prices, err := provider.GetPrices(ctx, credsBySource[sourceType].Plain, insts)
 		if err != nil {
 			c.log.Warn("pricecache: provider failed", "source", sourceType, "err", err)
 			continue
 		}
-		for instID, p := range prices {
-			if err := c.q.UpsertPrice(ctx, storage.UpsertPriceParams{
-				InstrumentID: instID,
-				Price:        p.Amount,
-			}); err != nil {
-				c.log.Warn("pricecache: upsert price", "instrument_id", instID, "err", err)
-			}
+		c.upsertPrices(ctx, prices)
+	}
+}
+
+func (c *Cache) upsertPrices(ctx context.Context, prices map[uuid.UUID]source.Price) {
+	for instID, p := range prices {
+		if err := c.q.UpsertPrice(ctx, storage.UpsertPriceParams{
+			InstrumentID: instID,
+			Price:        p.Amount,
+		}); err != nil {
+			c.log.Warn("pricecache: upsert price", "instrument_id", instID, "err", err)
 		}
 	}
-	c.log.Info("pricecache: refreshed", "user_id", userID, "instruments", len(ids))
+}
+
+func idsOf(instruments []Instrument) []uuid.UUID {
+	out := make([]uuid.UUID, len(instruments))
+	for i, inst := range instruments {
+		out[i] = inst.ID
+	}
+	return out
 }
 
 // claim filters out instruments that are already being refreshed.
-func (c *Cache) claim(instruments []Instrument) []uuid.UUID {
+func (c *Cache) claim(instruments []Instrument) []Instrument {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	out := make([]uuid.UUID, 0, len(instruments))
+	out := make([]Instrument, 0, len(instruments))
 	for _, inst := range instruments {
 		if c.inFlight[inst.ID] {
 			continue
 		}
 		c.inFlight[inst.ID] = true
-		out = append(out, inst.ID)
+		out = append(out, inst)
 	}
 	return out
 }
