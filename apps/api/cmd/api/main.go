@@ -11,9 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/config"
 	"github.com/kkulebaev/omnifolio/api/internal/crypto"
+	"github.com/kkulebaev/omnifolio/api/internal/instrument"
+	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
@@ -72,6 +75,9 @@ func run() error {
 
 	queries := storage.New(pool)
 	authSvc := auth.NewService(queries, idleTimeout, absoluteTimeout)
+	accountSvc := account.NewService(queries)
+	instrumentSvc := instrument.NewService(queries)
+	positionSvc := position.NewService(queries, accountSvc, instrumentSvc)
 
 	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
 		Email:    cfg.BootstrapUserEmail,
@@ -107,10 +113,13 @@ func run() error {
 	defer sched.Stop()
 
 	handler, err := server.New(server.Deps{
-		Auth:   authSvc,
-		Logger: log,
-		Secure: cfg.IsProduction(),
-		MaxAge: int(absoluteTimeout / time.Second),
+		Auth:       authSvc,
+		Account:    accountSvc,
+		Instrument: instrumentSvc,
+		Position:   positionSvc,
+		Logger:     log,
+		Secure:     cfg.IsProduction(),
+		MaxAge:     int(absoluteTimeout / time.Second),
 	})
 	if err != nil {
 		return fmt.Errorf("server: %w", err)

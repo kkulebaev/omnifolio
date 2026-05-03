@@ -11,15 +11,21 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	oapimw "github.com/oapi-codegen/nethttp-middleware"
 
+	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
+	"github.com/kkulebaev/omnifolio/api/internal/instrument"
+	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
 )
 
 type Deps struct {
-	Auth   *auth.Service
-	Logger *slog.Logger
-	Secure bool
-	MaxAge int
+	Auth       *auth.Service
+	Account    *account.Service
+	Instrument *instrument.Service
+	Position   *position.Service
+	Logger     *slog.Logger
+	Secure     bool
+	MaxAge     int
 }
 
 func New(d Deps) (http.Handler, error) {

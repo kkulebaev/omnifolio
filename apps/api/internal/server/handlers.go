@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"github.com/shopspring/decimal"
 
+	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
+	"github.com/kkulebaev/omnifolio/api/internal/instrument"
+	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
 )
 
@@ -37,7 +40,7 @@ func (s *serverImpl) Login(ctx context.Context, req oapi.LoginRequestObject) (oa
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			s.deps.Logger.Warn("auth: login failed", "email", string(req.Body.Email))
 			return oapi.Login401ApplicationProblemPlusJSONResponse{
-				UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+				UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(invalidCredentialsProblem()),
 			}, nil
 		}
 		return nil, err
@@ -70,43 +73,260 @@ func (s *serverImpl) GetMe(ctx context.Context, _ oapi.GetMeRequestObject) (oapi
 	return oapi.GetMe200JSONResponse(toOapiUser(user)), nil
 }
 
-// ----- accounts (M1.3 stubs) -----
+// ----- accounts -----
 
-func (s *serverImpl) ListAccounts(_ context.Context, _ oapi.ListAccountsRequestObject) (oapi.ListAccountsResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *serverImpl) CreateAccount(_ context.Context, _ oapi.CreateAccountRequestObject) (oapi.CreateAccountResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *serverImpl) GetAccount(_ context.Context, _ oapi.GetAccountRequestObject) (oapi.GetAccountResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *serverImpl) UpdateAccount(_ context.Context, _ oapi.UpdateAccountRequestObject) (oapi.UpdateAccountResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *serverImpl) DeleteAccount(_ context.Context, _ oapi.DeleteAccountRequestObject) (oapi.DeleteAccountResponseObject, error) {
-	return nil, errNotImplemented
-}
+func (s *serverImpl) ListAccounts(ctx context.Context, _ oapi.ListAccountsRequestObject) (oapi.ListAccountsResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.ListAccounts401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
 
-// ----- positions (M1.3 stubs) -----
+	rows, err := s.deps.Account.List(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
 
-func (s *serverImpl) CreatePosition(_ context.Context, _ oapi.CreatePositionRequestObject) (oapi.CreatePositionResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *serverImpl) UpdatePosition(_ context.Context, _ oapi.UpdatePositionRequestObject) (oapi.UpdatePositionResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *serverImpl) DeletePosition(_ context.Context, _ oapi.DeletePositionRequestObject) (oapi.DeletePositionResponseObject, error) {
-	return nil, errNotImplemented
+	items := make([]oapi.Account, len(rows))
+	for i, a := range rows {
+		items[i] = toOapiAccount(a)
+	}
+	return oapi.ListAccounts200JSONResponse{Items: items}, nil
 }
 
-// ----- instruments (M1.3 stubs) -----
+func (s *serverImpl) CreateAccount(ctx context.Context, req oapi.CreateAccountRequestObject) (oapi.CreateAccountResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.CreateAccount401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return createAccountValidationResp("missing body", nil), nil
+	}
 
-func (s *serverImpl) SearchInstruments(_ context.Context, _ oapi.SearchInstrumentsRequestObject) (oapi.SearchInstrumentsResponseObject, error) {
-	return nil, errNotImplemented
+	a, err := s.deps.Account.Create(ctx, user.ID, account.CreateInput{
+		Name: req.Body.Name,
+		Type: string(req.Body.Type),
+	})
+	if err != nil {
+		if errors.Is(err, account.ErrTypeNotSupported) {
+			return createAccountValidationResp("Type not supported in this version",
+				map[string]string{"type": "manual is the only supported type"}), nil
+		}
+		return nil, err
+	}
+	s.deps.Logger.Info("account: created", "user_id", user.ID, "account_id", a.ID, "type", a.SourceType)
+	return oapi.CreateAccount201JSONResponse(toOapiAccount(a)), nil
 }
-func (s *serverImpl) CreateInstrument(_ context.Context, _ oapi.CreateInstrumentRequestObject) (oapi.CreateInstrumentResponseObject, error) {
-	return nil, errNotImplemented
+
+func (s *serverImpl) GetAccount(ctx context.Context, req oapi.GetAccountRequestObject) (oapi.GetAccountResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.GetAccount401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+
+	a, err := s.deps.Account.Get(ctx, user.ID, req.AccountId)
+	if err != nil {
+		if errors.Is(err, account.ErrNotFound) {
+			return oapi.GetAccount404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("account")),
+			}, nil
+		}
+		return nil, err
+	}
+
+	positions, err := s.deps.Position.ListForAccount(ctx, user.ID, req.AccountId)
+	if err != nil {
+		return nil, err
+	}
+
+	return oapi.GetAccount200JSONResponse(toOapiAccountDetail(a, positions)), nil
+}
+
+func (s *serverImpl) UpdateAccount(ctx context.Context, req oapi.UpdateAccountRequestObject) (oapi.UpdateAccountResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.UpdateAccount401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return updateAccountValidationResp("missing body", nil), nil
+	}
+
+	a, err := s.deps.Account.Rename(ctx, user.ID, req.AccountId, req.Body.Name)
+	if err != nil {
+		if errors.Is(err, account.ErrNotFound) {
+			return oapi.UpdateAccount404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("account")),
+			}, nil
+		}
+		return nil, err
+	}
+	return oapi.UpdateAccount200JSONResponse(toOapiAccount(a)), nil
+}
+
+func (s *serverImpl) DeleteAccount(ctx context.Context, req oapi.DeleteAccountRequestObject) (oapi.DeleteAccountResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.DeleteAccount401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+
+	if err := s.deps.Account.Delete(ctx, user.ID, req.AccountId); err != nil {
+		if errors.Is(err, account.ErrNotFound) {
+			return oapi.DeleteAccount404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("account")),
+			}, nil
+		}
+		return nil, err
+	}
+	s.deps.Logger.Info("account: deleted", "user_id", user.ID, "account_id", req.AccountId)
+	return oapi.DeleteAccount204Response{}, nil
+}
+
+// ----- positions -----
+
+func (s *serverImpl) CreatePosition(ctx context.Context, req oapi.CreatePositionRequestObject) (oapi.CreatePositionResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.CreatePosition401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return createPositionValidationResp("missing body", nil), nil
+	}
+
+	qty, err := decimal.NewFromString(req.Body.Quantity)
+	if err != nil || qty.Sign() <= 0 {
+		return createPositionValidationResp("Invalid quantity",
+			map[string]string{"quantity": "must be a positive decimal"}), nil
+	}
+
+	pos, err := s.deps.Position.Create(ctx, user.ID, req.AccountId, req.Body.InstrumentId, qty)
+	if err != nil {
+		switch {
+		case errors.Is(err, position.ErrAccountNotFound):
+			return oapi.CreatePosition404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("account")),
+			}, nil
+		case errors.Is(err, position.ErrInstrumentNotFound):
+			return createPositionValidationResp("Validation failed",
+				map[string]string{"instrumentId": "not found"}), nil
+		case errors.Is(err, position.ErrAlreadyExists):
+			return oapi.CreatePosition409ApplicationProblemPlusJSONResponse{
+				ConflictApplicationProblemPlusJSONResponse: oapi.ConflictApplicationProblemPlusJSONResponse(conflictProblem("position already exists for this instrument; use PUT to update")),
+			}, nil
+		}
+		return nil, err
+	}
+
+	inst, err := s.deps.Instrument.Get(ctx, pos.InstrumentID)
+	if err != nil {
+		return nil, err
+	}
+	return oapi.CreatePosition201JSONResponse(toOapiPosition(pos, inst)), nil
+}
+
+func (s *serverImpl) UpdatePosition(ctx context.Context, req oapi.UpdatePositionRequestObject) (oapi.UpdatePositionResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.UpdatePosition401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return updatePositionValidationResp("missing body", nil), nil
+	}
+
+	qty, err := decimal.NewFromString(req.Body.Quantity)
+	if err != nil || qty.Sign() <= 0 {
+		return updatePositionValidationResp("Invalid quantity",
+			map[string]string{"quantity": "must be a positive decimal"}), nil
+	}
+
+	pos, err := s.deps.Position.Update(ctx, user.ID, req.AccountId, req.InstrumentId, qty)
+	if err != nil {
+		switch {
+		case errors.Is(err, position.ErrAccountNotFound), errors.Is(err, position.ErrNotFound):
+			return oapi.UpdatePosition404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("position")),
+			}, nil
+		}
+		return nil, err
+	}
+
+	inst, err := s.deps.Instrument.Get(ctx, pos.InstrumentID)
+	if err != nil {
+		return nil, err
+	}
+	return oapi.UpdatePosition200JSONResponse(toOapiPosition(pos, inst)), nil
+}
+
+func (s *serverImpl) DeletePosition(ctx context.Context, req oapi.DeletePositionRequestObject) (oapi.DeletePositionResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.DeletePosition401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+
+	if err := s.deps.Position.Delete(ctx, user.ID, req.AccountId, req.InstrumentId); err != nil {
+		if errors.Is(err, position.ErrAccountNotFound) || errors.Is(err, position.ErrNotFound) {
+			return oapi.DeletePosition404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("position")),
+			}, nil
+		}
+		return nil, err
+	}
+	return oapi.DeletePosition204Response{}, nil
+}
+
+// ----- instruments -----
+
+func (s *serverImpl) SearchInstruments(ctx context.Context, req oapi.SearchInstrumentsRequestObject) (oapi.SearchInstrumentsResponseObject, error) {
+	if _, ok := auth.UserFromContext(ctx); !ok {
+		return oapi.SearchInstruments401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	rows, err := s.deps.Instrument.Search(ctx, req.Params.Q)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]oapi.Instrument, len(rows))
+	for i, x := range rows {
+		items[i] = toOapiInstrument(x)
+	}
+	return oapi.SearchInstruments200JSONResponse{Items: items}, nil
+}
+
+func (s *serverImpl) CreateInstrument(ctx context.Context, req oapi.CreateInstrumentRequestObject) (oapi.CreateInstrumentResponseObject, error) {
+	if _, ok := auth.UserFromContext(ctx); !ok {
+		return oapi.CreateInstrument401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return createInstrumentValidationResp("missing body", nil), nil
+	}
+
+	inst, err := s.deps.Instrument.CreateOrGet(ctx, instrument.CreateInput{
+		Ticker:     req.Body.Ticker,
+		AssetClass: string(req.Body.AssetClass),
+		Currency:   req.Body.Currency,
+		Name:       req.Body.Name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return oapi.CreateInstrument201JSONResponse(toOapiInstrument(inst)), nil
 }
 
 // ----- portfolio (M1.4 stub) -----
@@ -115,7 +335,7 @@ func (s *serverImpl) GetPortfolio(_ context.Context, _ oapi.GetPortfolioRequestO
 	return nil, errNotImplemented
 }
 
-// ----- helpers -----
+// ----- mappers -----
 
 func toOapiUser(u auth.User) oapi.User {
 	return oapi.User{
@@ -125,6 +345,65 @@ func toOapiUser(u auth.User) oapi.User {
 		CreatedAt:       u.CreatedAt,
 	}
 }
+
+func toOapiAccount(a account.Account) oapi.Account {
+	out := oapi.Account{
+		Id:            a.ID,
+		Name:          a.Name,
+		Type:          oapi.AccountType(a.SourceType),
+		LastSyncedAt:  a.LastSyncedAt,
+		LastSyncError: a.LastSyncError,
+		CreatedAt:     a.CreatedAt,
+		UpdatedAt:     a.UpdatedAt,
+	}
+	if a.LastSyncStatus != nil {
+		st := oapi.AccountSyncStatus(*a.LastSyncStatus)
+		out.LastSyncStatus = &st
+	}
+	return out
+}
+
+func toOapiAccountDetail(a account.Account, positions []position.EnrichedPosition) oapi.AccountDetail {
+	base := toOapiAccount(a)
+	posList := make([]oapi.Position, len(positions))
+	for i, p := range positions {
+		posList[i] = toOapiPosition(p.Position, p.Instrument)
+	}
+	return oapi.AccountDetail{
+		Id:             base.Id,
+		Name:           base.Name,
+		Type:           base.Type,
+		LastSyncedAt:   base.LastSyncedAt,
+		LastSyncStatus: base.LastSyncStatus,
+		LastSyncError:  base.LastSyncError,
+		CreatedAt:      base.CreatedAt,
+		UpdatedAt:      base.UpdatedAt,
+		Positions:      posList,
+	}
+}
+
+func toOapiInstrument(i instrument.Instrument) oapi.Instrument {
+	return oapi.Instrument{
+		Id:         i.ID,
+		Ticker:     i.Ticker,
+		AssetClass: oapi.AssetClass(i.AssetClass),
+		Currency:   i.Currency,
+		Name:       i.Name,
+		CreatedAt:  i.CreatedAt,
+		UpdatedAt:  i.UpdatedAt,
+	}
+}
+
+func toOapiPosition(p position.Position, inst instrument.Instrument) oapi.Position {
+	return oapi.Position{
+		AccountId:  p.AccountID,
+		Instrument: toOapiInstrument(inst),
+		Quantity:   p.Quantity.String(),
+		UpdatedAt:  p.UpdatedAt,
+	}
+}
+
+// ----- helpers -----
 
 func buildSessionCookie(token string, maxAge int, secure bool) *http.Cookie {
 	return &http.Cookie{
@@ -138,8 +417,6 @@ func buildSessionCookie(token string, maxAge int, secure bool) *http.Cookie {
 	}
 }
 
-// logoutWithClearCookie is a custom LogoutResponseObject that sets Set-Cookie
-// to clear the session cookie before writing 204.
 type logoutWithClearCookie struct {
 	secure bool
 }
@@ -167,21 +444,41 @@ func unauthorizedProblem() oapi.Problem {
 	return oapi.Problem{Type: &t, Title: "Unauthorized", Status: 401, Detail: &d}
 }
 
+func invalidCredentialsProblem() oapi.Problem {
+	t := "/errors/invalid-credentials"
+	d := "Invalid email or password"
+	return oapi.Problem{Type: &t, Title: "Invalid credentials", Status: 401, Detail: &d}
+}
+
+func notFoundProblem(resource string) oapi.Problem {
+	t := "/errors/not-found"
+	d := fmt.Sprintf("%s not found", resource)
+	return oapi.Problem{Type: &t, Title: "Not found", Status: 404, Detail: &d}
+}
+
+func conflictProblem(detail string) oapi.Problem {
+	t := "/errors/conflict"
+	d := detail
+	return oapi.Problem{Type: &t, Title: "Conflict", Status: 409, Detail: &d}
+}
+
 type validationFlex struct {
 	title  string
 	fields *map[string]string
 }
 
-func (v validationFlex) asLoginResponse() oapi.Login422ApplicationProblemPlusJSONResponse {
+func (v validationFlex) build() oapi.ValidationErrorApplicationProblemPlusJSONResponse {
 	t := "/errors/validation"
-	return oapi.Login422ApplicationProblemPlusJSONResponse{
-		ValidationErrorApplicationProblemPlusJSONResponse: oapi.ValidationErrorApplicationProblemPlusJSONResponse{
-			Type:   &t,
-			Title:  v.title,
-			Status: 422,
-			Fields: v.fields,
-		},
+	return oapi.ValidationErrorApplicationProblemPlusJSONResponse{
+		Type:   &t,
+		Title:  v.title,
+		Status: 422,
+		Fields: v.fields,
 	}
+}
+
+func (v validationFlex) asLoginResponse() oapi.Login422ApplicationProblemPlusJSONResponse {
+	return oapi.Login422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: v.build()}
 }
 
 func validationProblem(title string, fields map[string]string) validationFlex {
@@ -191,8 +488,24 @@ func validationProblem(title string, fields map[string]string) validationFlex {
 	return validationFlex{title: title}
 }
 
-// notImplementedHandler is the strict server's ResponseErrorHandlerFunc; it
-// maps errNotImplemented to a 501 problem and other errors to 500.
+func createAccountValidationResp(title string, fields map[string]string) oapi.CreateAccount422ApplicationProblemPlusJSONResponse {
+	return oapi.CreateAccount422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func updateAccountValidationResp(title string, fields map[string]string) oapi.UpdateAccount422ApplicationProblemPlusJSONResponse {
+	return oapi.UpdateAccount422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func createPositionValidationResp(title string, fields map[string]string) oapi.CreatePosition422ApplicationProblemPlusJSONResponse {
+	return oapi.CreatePosition422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func updatePositionValidationResp(title string, fields map[string]string) oapi.UpdatePosition422ApplicationProblemPlusJSONResponse {
+	return oapi.UpdatePosition422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func createInstrumentValidationResp(title string, fields map[string]string) oapi.CreateInstrument422ApplicationProblemPlusJSONResponse {
+	return oapi.CreateInstrument422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+
+// ----- strict server error handlers -----
+
 func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	if errors.Is(err, errNotImplemented) {
@@ -204,13 +517,8 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	fmt.Fprint(w, `{"title":"Internal server error","status":500,"type":"/errors/internal"}`)
 }
 
-// requestErrorHandler is invoked when oapi-codegen strict server fails to decode
-// a request (malformed JSON, etc).
 func requestErrorHandler(w http.ResponseWriter, _ *http.Request, _ error) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(http.StatusBadRequest)
 	fmt.Fprint(w, `{"title":"Bad request","status":400,"type":"/errors/bad-request"}`)
 }
-
-// _ ensures uuid import is kept; remove once accounts handlers use it.
-var _ = uuid.Nil
