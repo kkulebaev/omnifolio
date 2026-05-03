@@ -114,7 +114,8 @@ func (s *serverImpl) CreateAccount(ctx context.Context, req oapi.CreateAccountRe
 		Name: req.Body.Name,
 		Type: string(req.Body.Type),
 	}
-	if string(req.Body.Type) == account.TypeTInvest {
+	switch string(req.Body.Type) {
+	case account.TypeTInvest:
 		if req.Body.Token == nil || *req.Body.Token == "" {
 			return createAccountValidationResp("Validation failed",
 				map[string]string{"token": "required for type=tinvest"}), nil
@@ -125,6 +126,17 @@ func (s *serverImpl) CreateAccount(ctx context.Context, req oapi.CreateAccountRe
 		}
 		in.TInvestToken = *req.Body.Token
 		in.TInvestAccountID = *req.Body.TinvestAccountId
+	case account.TypeBybit:
+		if req.Body.ApiKey == nil || *req.Body.ApiKey == "" {
+			return createAccountValidationResp("Validation failed",
+				map[string]string{"apiKey": "required for type=bybit"}), nil
+		}
+		if req.Body.ApiSecret == nil || *req.Body.ApiSecret == "" {
+			return createAccountValidationResp("Validation failed",
+				map[string]string{"apiSecret": "required for type=bybit"}), nil
+		}
+		in.BybitAPIKey = *req.Body.ApiKey
+		in.BybitAPISecret = *req.Body.ApiSecret
 	}
 
 	a, err := s.deps.Account.Create(ctx, user.ID, in)
@@ -134,8 +146,16 @@ func (s *serverImpl) CreateAccount(ctx context.Context, req oapi.CreateAccountRe
 			return createAccountValidationResp("Type not supported",
 				map[string]string{"type": "supported types: manual, tinvest"}), nil
 		case errors.Is(err, account.ErrTokenInvalid):
-			return createAccountValidationResp("Invalid token",
-				map[string]string{"token": "rejected by T-Invest"}), nil
+			fields := map[string]string{}
+			switch string(req.Body.Type) {
+			case account.TypeTInvest:
+				fields["token"] = "rejected by T-Invest"
+			case account.TypeBybit:
+				fields["apiKey"] = "rejected by Bybit"
+			default:
+				fields["token"] = "credentials rejected"
+			}
+			return createAccountValidationResp("Invalid credentials", fields), nil
 		case errors.Is(err, source.ErrSubAccountNotFound):
 			return createAccountValidationResp("Sub-account not found",
 				map[string]string{"tinvestAccountId": "not found in your T-Invest account list"}), nil

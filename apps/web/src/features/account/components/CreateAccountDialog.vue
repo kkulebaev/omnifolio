@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { useQueryClient } from "@tanstack/vue-query";
 import {
   useCreateAccount,
@@ -20,7 +20,7 @@ const emit = defineEmits<{ "update:open": [v: boolean] }>();
 const queryClient = useQueryClient();
 const createMutation = useCreateAccount();
 
-const tab = ref<"manual" | "tinvest">("manual");
+const tab = ref<"manual" | "tinvest" | "bybit">("manual");
 
 // Manual tab state
 const manualName = ref("");
@@ -33,7 +33,16 @@ const tName = ref("");
 const tStep = ref<"token" | "select">("token");
 const previewLoading = ref(false);
 
+// Bybit tab state
+const bName = ref("");
+const bApiKey = ref("");
+const bApiSecret = ref("");
+
 const error = ref<string | null>(null);
+
+const showSubmit = computed(
+  () => tab.value === "manual" || (tab.value === "tinvest" && tStep.value === "select") || tab.value === "bybit",
+);
 
 watch(
   () => props.open,
@@ -46,6 +55,9 @@ watch(
       tSelectedId.value = "";
       tName.value = "";
       tStep.value = "token";
+      bName.value = "";
+      bApiKey.value = "";
+      bApiSecret.value = "";
       error.value = null;
       previewLoading.value = false;
     }
@@ -89,7 +101,7 @@ async function submit() {
       await createMutation.mutateAsync({
         data: { name: manualName.value.trim(), type: AccountType.manual },
       });
-    } else {
+    } else if (tab.value === "tinvest") {
       if (!tSelectedId.value) {
         error.value = "Выбери sub-аккаунт";
         return;
@@ -106,11 +118,39 @@ async function submit() {
           tinvestAccountId: tSelectedId.value,
         },
       });
+    } else {
+      if (bName.value.trim().length === 0) {
+        error.value = "Название обязательно";
+        return;
+      }
+      if (bApiKey.value.length < 8 || bApiSecret.value.length < 8) {
+        error.value = "API key и secret обязательны";
+        return;
+      }
+      await createMutation.mutateAsync({
+        data: {
+          name: bName.value.trim(),
+          type: AccountType.bybit,
+          apiKey: bApiKey.value,
+          apiSecret: bApiSecret.value,
+        },
+      });
     }
     queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
     emit("update:open", false);
   } catch (e) {
-    error.value = "Не удалось создать: " + (e as Error).message;
+    if (e instanceof HttpError && e.status === 422) {
+      const fields = e.problem.fields;
+      if (fields) {
+        error.value = Object.entries(fields)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("; ");
+      } else {
+        error.value = e.problem.title || "Validation failed";
+      }
+    } else {
+      error.value = "Не удалось создать: " + (e as Error).message;
+    }
   }
 }
 
@@ -155,6 +195,17 @@ function typeBadge(type: string): string {
       >
         T-Invest
       </button>
+      <button
+        type="button"
+        class="px-3 py-2 text-sm"
+        :class="tab === 'bybit' ? 'border-b-2 border-primary font-medium' : 'opacity-60'"
+        @click="
+          tab = 'bybit';
+          error = null;
+        "
+      >
+        Bybit
+      </button>
     </div>
 
     <form class="space-y-4" @submit.prevent="submit">
@@ -166,7 +217,7 @@ function typeBadge(type: string): string {
         <p class="text-sm opacity-60">Тип: <code>manual</code> — позиции добавляются вручную.</p>
       </template>
 
-      <template v-else>
+      <template v-else-if="tab === 'tinvest'">
         <template v-if="tStep === 'token'">
           <div class="space-y-1.5">
             <Label for="t-token">T-Invest токен</Label>
@@ -223,9 +274,37 @@ function typeBadge(type: string): string {
         </template>
       </template>
 
+      <template v-else>
+        <div class="space-y-1.5">
+          <Label for="b-name">Название</Label>
+          <Input id="b-name" v-model="bName" placeholder="Bybit Crypto" />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="b-key">API Key</Label>
+          <Input id="b-key" v-model="bApiKey" placeholder="..." autocomplete="off" />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="b-secret">API Secret</Label>
+          <Input
+            id="b-secret"
+            v-model="bApiSecret"
+            type="password"
+            placeholder="..."
+            autocomplete="off"
+          />
+        </div>
+        <p class="text-xs opacity-60">
+          Используй <strong>read-only</strong> ключ из
+          <a href="https://www.bybit.com/app/user/api-management" target="_blank" rel="noopener" class="underline">
+            Bybit API Management
+          </a>
+          с правами Wallet → Account info.
+        </p>
+      </template>
+
       <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
 
-      <div v-if="tab === 'manual' || tStep === 'select'" class="flex justify-end gap-2">
+      <div v-if="showSubmit" class="flex justify-end gap-2">
         <Button type="button" variant="outline" @click="emit('update:open', false)">Отмена</Button>
         <Button type="submit" :disabled="createMutation.isPending.value">
           {{ createMutation.isPending.value ? "Создаём…" : "Создать" }}

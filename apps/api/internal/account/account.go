@@ -45,6 +45,8 @@ type CreateInput struct {
 	Type             string
 	TInvestToken     string
 	TInvestAccountID string
+	BybitAPIKey      string
+	BybitAPISecret   string
 }
 
 type Service struct {
@@ -73,6 +75,8 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 		return toAccount(row), nil
 	case TypeTInvest:
 		return s.createBrokerage(ctx, userID, in, encodeTInvestCreds(in))
+	case TypeBybit:
+		return s.createBrokerage(ctx, userID, in, encodeBybitCreds(in))
 	default:
 		return Account{}, ErrTypeNotSupported
 	}
@@ -152,6 +156,13 @@ func (s *Service) validateBrokerageCreds(ctx context.Context, sourceType string,
 	wanted, err := extractSubAccountID(sourceType, plainCreds)
 	if err != nil {
 		return err
+	}
+	if wanted == "" {
+		// Sources without sub-account selection (e.g. bybit) — accept any first.
+		if len(subs) == 0 {
+			return source.ErrSubAccountNotFound
+		}
+		return nil
 	}
 	for _, s := range subs {
 		if s.ID == wanted {
@@ -255,6 +266,14 @@ func encodeTInvestCreds(in CreateInput) []byte {
 	b, _ := json.Marshal(map[string]string{
 		"token":            in.TInvestToken,
 		"tinvestAccountId": in.TInvestAccountID,
+	})
+	return b
+}
+
+func encodeBybitCreds(in CreateInput) []byte {
+	b, _ := json.Marshal(map[string]string{
+		"apiKey":    in.BybitAPIKey,
+		"apiSecret": in.BybitAPISecret,
 	})
 	return b
 }

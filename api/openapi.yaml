@@ -528,6 +528,7 @@ components:
       description: |
         For type=manual only `name` and `type` are required.
         For type=tinvest also `token` and `tinvestAccountId` must be provided.
+        For type=bybit also `apiKey` and `apiSecret` must be provided.
       properties:
         name:
           type: string
@@ -545,6 +546,16 @@ components:
           minLength: 1
           maxLength: 64
           description: T-Invest sub-account id (required when type=tinvest)
+        apiKey:
+          type: string
+          minLength: 8
+          maxLength: 64
+          description: Bybit read-only API key (required when type=bybit)
+        apiSecret:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Bybit read-only API secret (required when type=bybit)
 
     TInvestPreviewRequest:
       type: object
