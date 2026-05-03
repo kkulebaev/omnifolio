@@ -628,3 +628,213 @@ apps/web/src/
    и убедиться что аггрегация считает `valueNative = 10 × price` и
    конвертит в RUB через `fx_rates` (M1 кладёт USD/RUB через ЦБ FX cron).
 
+---
+
+## 16. Решения M1.2 (детализация)
+
+Решения, зафиксированные после интервью на тему реализации auth M1.2
+(вопросы 26–29). Дополняют §15 конкретикой codegen/crypto/sqlc/behavior.
+
+### 16.1. oapi-codegen integration
+
+- **Mode**: strict-server поверх chi-server adapter.
+  - `strict-server: true` — методы получают типизированные `*RequestObject`
+    и возвращают `*ResponseObject` (oneOf вариантов 200/401/422).
+    oapi-codegen сам маршалит и проставляет статусы.
+  - `chi-server: true` даёт `HandlerFromMux` для wiring.
+- **Размер интерфейса**: один глобальный `ServerInterface` со всеми
+  методами M1. Реализуется одним типом `*server.Server`. Per-tag splits — нет.
+- **Where**: `internal/server/oapi/` — generated файлы (`api.gen.go`,
+  `spec.gen.go`, `types.gen.go`) рядом с реализацией.
+- **Runtime валидация**: `oapi-codegen/nethttp-middleware` —
+  `OapiRequestValidator(spec)` как chi middleware. Spec embed через
+  `//go:embed api/openapi.yaml` (yaml кладётся в `internal/server/oapi/`
+  при build context либо копируется из корня monorepo).
+- **Generation**:
+  - `internal/server/oapi/gen.go` — `//go:generate go run ...oapi-codegen --config=config.yaml ../api/openapi.yaml`.
+  - `tools.go` с blank import для версии в `go.mod`.
+  - Makefile target `generate` запускает `cd apps/api && go generate ./...`
+    и `pnpm --filter web generate`.
+- **Middleware order** (chi mux):
+  1. RequestID
+  2. RealIP
+  3. structured request logger
+  4. Recoverer (panic → Problem 500)
+  5. Timeout (30s)
+  6. OapiRequestValidator (валидирует body/params/headers)
+  7. (на protected routes) sessionMiddleware
+- **Error mapper** (`writeProblem(w, err)`):
+  - `errors.Is(err, ErrNotFound)` → 404
+  - `errors.Is(err, ErrInvalidCredentials)` → 401
+  - `errors.Is(err, ErrConflict)` → 409
+  - validator-ошибка с `fields` → 422
+  - default → 500 + `log.Error`
+
+### 16.2. Crypto, password hashing, sessions
+
+- **MASTER_KEY encoding**: base64url, 32 bytes plain → 43 char без padding.
+  Парсится в config как:
+  ```go
+  keyBytes, err := base64.RawURLEncoding.DecodeString(cfg.MasterKey)
+  if err != nil || len(keyBytes) != 32 { return ErrInvalidMasterKey }
+  ```
+  В compose dev — placeholder корректной длины, в prod — генерируется
+  через `openssl rand -base64 32 | tr '+/' '-_' | tr -d '='`.
+- **Domain separation через HKDF**:
+  - `credentialsKey := hkdfExpand(masterKey, "credentials.v1", 32)` —
+    для AES-GCM шифрования broker secrets.
+  - Будущие назначения (sessions MAC, signing) — через свои labels.
+  - Используем `golang.org/x/crypto/hkdf`.
+- **AES-GCM**:
+  - 12-byte nonce из `crypto/rand`, хранится в `account_credentials.nonce`.
+  - **AAD = account_id (16 bytes)** — защита от swap-атаки на дамп БД
+    (расшифровка чужих credentials под видом своих не пройдёт integrity check).
+  - Encrypt: `gcm.Seal(nil, nonce, plaintext, accountIDBytes)`.
+- **Argon2 hash format**:
+  - PHC string: `$argon2id$v=19$m=65536,t=1,p=4$<salt_b64>$<hash_b64>`
+  - Параметры в строке → upgrade-path: при login считаем оба варианта
+    параметров; при успехе со старыми — пере-хэшируем под новые и UPDATE.
+- **Library**: `github.com/alexedwards/argon2id` (тонкая обёртка ~150 строк
+  без транзитивных deps).
+  ```go
+  hash, _ := argon2id.CreateHash(password, &argon2id.Params{
+      Memory: 64 * 1024, Iterations: 1, Parallelism: 4,
+      SaltLength: 16, KeyLength: 32,
+  })
+  match, _, _ := argon2id.ComparePasswordAndHash(password, hash)
+  ```
+- **Session token**:
+  - 32 bytes из `crypto/rand` → `base64.RawURLEncoding` (43 char).
+  - В cookie: plaintext base64.
+  - В БД (`sessions.token_hash BYTEA(32)`): SHA-256 без соли (input — 256-bit
+    random, brute-force нерелевантен).
+- **Session middleware** кладёт в `request.Context()`:
+  - Полный `User { ID, Email, DisplayCurrency }` — чтобы хендлеры не
+    делали extra DB lookup.
+  - Helpers: `UserFromContext(ctx)`, `MustUserFromContext(ctx)` (panic
+    если missing — для protected routes).
+- **Cookie attributes**:
+  - Name: `sid`
+  - HttpOnly: true
+  - Secure: `cfg.IsProduction()` (в dev http localhost — false)
+  - SameSite: Lax
+  - Path: `/`
+  - Max-Age: 30 дней (absolute timeout)
+- **CORS**: НЕ используется. Same-origin: dev — Vite proxy `/api → :8080`,
+  prod — Caddy reverse proxy на одном домене.
+
+### 16.3. sqlc integration
+
+- **Engine**: `sql_package: "pgx/v5"` — native pgx-типы, `pgxpool.Pool`
+  как `DBTX`.
+- **Output package**: один `internal/storage` (`storage.New(pool) *Queries`).
+  Per-resource splits на пакеты — нет.
+- **Queries SQL files** — per-resource в `internal/storage/queries/`:
+  ```
+  internal/storage/queries/
+    users.sql
+    sessions.sql
+    accounts.sql
+    account_credentials.sql
+    instruments.sql
+    instrument_external_ids.sql
+    positions.sql
+    prices.sql
+    fx_rates.sql
+    portfolios.sql
+  ```
+  Generated outputs — в `internal/storage/{users,sessions,…}.sql.go`,
+  всё в одном `package storage`.
+- **Type overrides**:
+  - `numeric` → `github.com/shopspring/decimal.Decimal`
+    (nullable → `decimal.NullDecimal`)
+  - `uuid` → `github.com/google/uuid.UUID`
+    (nullable → `uuid.NullUUID`)
+- **NULL**: `emit_pointers_for_null_types: true` →
+  `LastSyncedAt *time.Time` вместо `pgtype.Timestamptz`.
+- **Generation**: `sqlc` бинарь установлен в Dockerfile.dev
+  (`go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0`). Запуск через
+  Makefile: `cd apps/api && sqlc generate`.
+- **Naming clash**: sqlc генерит `internal/storage/db.go` со своим `DBTX`
+  interface и `Queries`. Наш текущий `db.go` (с `NewPool`) переименован
+  в `pool.go` — конфликта нет.
+- **sqlc.yaml** (примерное содержимое):
+  ```yaml
+  version: "2"
+  sql:
+    - schema: "internal/storage/migrations"
+      queries: "internal/storage/queries"
+      engine: "postgresql"
+      gen:
+        go:
+          package: "storage"
+          out: "internal/storage"
+          sql_package: "pgx/v5"
+          emit_pointers_for_null_types: true
+          emit_json_tags: false
+          overrides:
+            - db_type: "uuid"
+              go_type: "github.com/google/uuid.UUID"
+            - db_type: "uuid"
+              nullable: true
+              go_type:
+                type: "uuid.NullUUID"
+                import: "github.com/google/uuid"
+            - db_type: "numeric"
+              go_type: "github.com/shopspring/decimal.Decimal"
+            - db_type: "numeric"
+              nullable: true
+              go_type:
+                type: "decimal.NullDecimal"
+                import: "github.com/shopspring/decimal"
+  ```
+- **Транзакции**: `tx, _ := pool.Begin(ctx); qtx := q.WithTx(tx); ...; tx.Commit(ctx)`.
+
+### 16.4. Behaviors
+
+- **Bootstrap user**:
+  - `BOOTSTRAP_USER_EMAIL` + `BOOTSTRAP_USER_PASSWORD` есть, юзера с этим
+    email **нет** → создаём, лог `INFO bootstrap user created`.
+  - `BOOTSTRAP_..._EMAIL` есть, юзер с этим email **уже есть** → no-op,
+    лог `INFO bootstrap skipped: user exists`. Env-пароль не перезаписывает.
+  - `users` пуста, env-переменные **не заданы** → лог
+    `WARN bootstrap skipped: BOOTSTRAP_USER_EMAIL not set; first user
+    must be created via /auth/register (not yet implemented)`. Приложение
+    стартует, но залогиниться нельзя.
+- **Login при существующей сессии**: создаётся новая сессия параллельно.
+  Multi-device. Существующие сессии **не** инвалидируются.
+- **`last_seen_at` coalescing**: middleware читает session, если
+  `time.Since(LastSeenAt) > 1 minute` — UPDATE, иначе skip. Точность
+  idle-чека ±1 минута (приемлемо при idle=30мин).
+- **Logout**: `DELETE FROM sessions WHERE token_hash = $1` + Set-Cookie
+  с `Max-Age=0` для немедленной очистки. Без BroadcastChannel (M5+).
+- **Validator package в M1.2**: НЕ подключаем `go-playground/validator`.
+  Shape-валидация — OpenAPI middleware. Бизнес-правила — sentinel errors
+  в service layer. Подключим в M2 при появлении cross-field правил.
+- **Auth events logging**: явные `log.Info("auth: login ok", "user_id",
+  ..., "ip", ...)` и `log.Warn("auth: login failed", "email", ...,
+  "ip", ...)` в auth handlers — security-relevant audit. Никогда не
+  логируем password.
+
+### 16.5. Tests
+
+- **Unit (без БД)**: crypto helpers (`hkdf`, `aesgcm.Seal/Open`),
+  argon2 wrapper.
+- **Integration (testcontainers-go)**: auth service (login, logout, me,
+  bootstrap), session middleware, account/instrument/position service.
+  Реальный Postgres per-suite, миграции применяются на старте suite.
+- **Handler-level**: `httptest.Server` поверх chi с реальным sessions
+  middleware и testcontainers-Queries. Smoke на login flow + auth
+  enforcement.
+- **E2E (Playwright)**: отложено до M5+.
+
+### 16.6. Что НЕ в M1.2
+
+- Email verification, password reset, 2FA, account lockout, captcha,
+  rate limit на login.
+- Refresh tokens, JWT (отвергнуты в дизайне).
+- CORS (same-origin).
+- Audit log как отдельная таблица (использyetsя explicit logging).
+- Sessions UI ("где я залогинен", revoke).
+- BroadcastChannel logout sync между табами.
+
