@@ -55,19 +55,6 @@ type InstrumentExternalID struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
-type Portfolio struct {
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	Name      string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-}
-
-type PortfolioAccount struct {
-	PortfolioID uuid.UUID
-	AccountID   uuid.UUID
-}
-
 type Position struct {
 	AccountID    uuid.UUID
 	InstrumentID uuid.UUID
