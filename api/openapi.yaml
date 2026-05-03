@@ -1,0 +1,29 @@
+openapi: 3.0.3
+info:
+  title: Omnifolio API
+  version: 0.0.1
+  description: Personal investments tracker.
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      operationId: getHealthz
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok

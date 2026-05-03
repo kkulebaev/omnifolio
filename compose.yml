@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omnifolio-postgres
+    environment:
+      POSTGRES_DB: omnifolio
+      POSTGRES_USER: omnifolio
+      POSTGRES_PASSWORD: omnifolio
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnifolio"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.dev
+    container_name: omnifolio-api
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://omnifolio:omnifolio@postgres:5432/omnifolio?sslmode=disable
+      MASTER_KEY: ZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXNfYjY0Xw==
+      SESSION_SECRET: dev_session_secret_change_in_prod
+      LOG_LEVEL: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+      - go_modules:/go/pkg/mod
+      - go_build:/root/.cache/go-build
+
+volumes:
+  postgres_data:
+  go_modules:
+  go_build:

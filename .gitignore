@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+apps/api/bin/
+apps/api/tmp/
+
+# Go
+vendor/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# IDE / agents
+.vscode/
+.idea/
+.claude/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+*.out

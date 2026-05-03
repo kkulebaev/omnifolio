@@ -1,0 +1,15 @@
+FROM golang:1.23-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache git \
+    && go install github.com/air-verse/air@v1.61.5
+
+COPY go.mod ./
+RUN go mod download || true
+
+COPY . .
+
+EXPOSE 8080
+
+CMD ["air", "-c", ".air.toml"]
