@@ -46,6 +46,8 @@ import type {
   Portfolio,
   Position,
   SearchInstrumentsParams,
+  TInvestPreviewRequest,
+  TInvestPreviewResponse,
   UnauthorizedResponse,
   UpdateAccountRequest,
   UpdatePositionRequest,
@@ -454,6 +456,141 @@ export const useCreateAccount = <TError = UnauthorizedResponse | ValidationError
       > => {
 
       const mutationOptions = getCreateAccountMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    
+/**
+ * Validates a T-Invest token and returns the list of available sub-accounts
+(брокерский / ИИС / премиум). Used by the UI before account creation so
+the user can pick which sub-account to mirror.
+
+ * @summary Preview T-Invest sub-accounts for a token
+ */
+export const previewTInvestAccounts = (
+    tInvestPreviewRequest: MaybeRef<TInvestPreviewRequest>,
+ signal?: AbortSignal
+) => {
+      tInvestPreviewRequest = unref(tInvestPreviewRequest);
+      
+      return fetcher<TInvestPreviewResponse>(
+      {url: `/accounts/tinvest/preview`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: tInvestPreviewRequest, signal
+    },
+      );
+    }
+  
+
+
+export const getPreviewTInvestAccountsMutationOptions = <TError = UnauthorizedResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewTInvestAccounts>>, TError,{data: TInvestPreviewRequest}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof previewTInvestAccounts>>, TError,{data: TInvestPreviewRequest}, TContext> => {
+
+const mutationKey = ['previewTInvestAccounts'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewTInvestAccounts>>, {data: TInvestPreviewRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewTInvestAccounts(data,)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewTInvestAccountsMutationResult = NonNullable<Awaited<ReturnType<typeof previewTInvestAccounts>>>
+    export type PreviewTInvestAccountsMutationBody = TInvestPreviewRequest
+    export type PreviewTInvestAccountsMutationError = UnauthorizedResponse | ValidationErrorResponse
+
+    /**
+ * @summary Preview T-Invest sub-accounts for a token
+ */
+export const usePreviewTInvestAccounts = <TError = UnauthorizedResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewTInvestAccounts>>, TError,{data: TInvestPreviewRequest}, TContext>, }
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof previewTInvestAccounts>>,
+        TError,
+        {data: TInvestPreviewRequest},
+        TContext
+      > => {
+
+      const mutationOptions = getPreviewTInvestAccountsMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    
+/**
+ * Synchronously fetches positions and prices for a tinvest/bybit account.
+Manual accounts return 422.
+
+ * @summary Trigger an immediate sync for a brokerage account
+ */
+export const syncAccount = (
+    accountId: MaybeRef<string>,
+ signal?: AbortSignal
+) => {
+      accountId = unref(accountId);
+      
+      return fetcher<Account>(
+      {url: `/accounts/${accountId}/sync`, method: 'POST', signal
+    },
+      );
+    }
+  
+
+
+export const getSyncAccountMutationOptions = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncAccount>>, TError,{accountId: string}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof syncAccount>>, TError,{accountId: string}, TContext> => {
+
+const mutationKey = ['syncAccount'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncAccount>>, {accountId: string}> = (props) => {
+          const {accountId} = props ?? {};
+
+          return  syncAccount(accountId,)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncAccountMutationResult = NonNullable<Awaited<ReturnType<typeof syncAccount>>>
+    
+    export type SyncAccountMutationError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse
+
+    /**
+ * @summary Trigger an immediate sync for a brokerage account
+ */
+export const useSyncAccount = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncAccount>>, TError,{accountId: string}, TContext>, }
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof syncAccount>>,
+        TError,
+        {accountId: string},
+        TContext
+      > => {
+
+      const mutationOptions = getSyncAccountMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

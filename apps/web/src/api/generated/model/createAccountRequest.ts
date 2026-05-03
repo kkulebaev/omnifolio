@@ -7,6 +7,11 @@
  */
 import type { AccountType } from './accountType';
 
+/**
+ * For type=manual only `name` and `type` are required.
+For type=tinvest also `token` and `tinvestAccountId` must be provided.
+
+ */
 export interface CreateAccountRequest {
   /**
    * @minLength 1
@@ -14,4 +19,16 @@ export interface CreateAccountRequest {
    */
   name: string;
   type: AccountType;
+  /**
+   * T-Invest read-only API token (required when type=tinvest)
+   * @minLength 10
+   * @maxLength 200
+   */
+  token?: string;
+  /**
+   * T-Invest sub-account id (required when type=tinvest)
+   * @minLength 1
+   * @maxLength 64
+   */
+  tinvestAccountId?: string;
 }

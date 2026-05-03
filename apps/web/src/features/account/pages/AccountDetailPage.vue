@@ -6,6 +6,7 @@ import {
   useGetAccount,
   useDeleteAccount,
   useDeletePosition,
+  useSyncAccount,
   getGetAccountQueryKey,
   getListAccountsQueryKey,
 } from "@/api/generated";
@@ -27,12 +28,21 @@ const router = useRouter();
 const queryClient = useQueryClient();
 
 const accountId = computed(() => route.params.id as string);
-const account = useGetAccount(accountId);
+
+const account = useGetAccount(accountId, {
+  query: {
+    // Poll while sync in progress.
+    refetchInterval: (q) => (q.state.data?.lastSyncStatus === "pending" ? 3000 : false),
+  },
+});
 
 const deleteAccount = useDeleteAccount();
 const deletePosition = useDeletePosition();
+const syncAccount = useSyncAccount();
 
 const dialogOpen = ref(false);
+
+const isManual = computed(() => account.data.value?.type === "manual");
 
 async function handleDeleteAccount() {
   if (!confirm("Удалить аккаунт со всеми позициями?")) return;
@@ -47,6 +57,29 @@ async function handleDeletePosition(instrumentId: string) {
   await deletePosition.mutateAsync({ accountId: accountId.value, instrumentId });
   queryClient.invalidateQueries({ queryKey: getGetAccountQueryKey(accountId.value) });
   queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+}
+
+async function handleSync() {
+  try {
+    await syncAccount.mutateAsync({ accountId: accountId.value });
+  } finally {
+    queryClient.invalidateQueries({ queryKey: getGetAccountQueryKey(accountId.value) });
+    queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+  }
+}
+
+function statusLabel(s: string | null | undefined): string {
+  switch (s) {
+    case "pending":
+      return "синхронизация…";
+    case "success":
+      return "ok";
+    case "failed":
+      return "ошибка";
+    default:
+      return "—";
+  }
 }
 </script>
 
@@ -67,10 +100,31 @@ async function handleDeletePosition(instrumentId: string) {
         <CardHeader>
           <CardDescription>Тип</CardDescription>
           <CardTitle class="text-base">{{ account.data.value.type }}</CardTitle>
-          <CardDescription>создан {{ formatDate(account.data.value.createdAt) }}</CardDescription>
+          <CardDescription>
+            создан {{ formatDate(account.data.value.createdAt) }}
+            <template v-if="!isManual">
+              · sync: <strong>{{ statusLabel(account.data.value.lastSyncStatus) }}</strong>
+              <template v-if="account.data.value.lastSyncedAt">
+                ({{ formatDate(account.data.value.lastSyncedAt) }})
+              </template>
+            </template>
+          </CardDescription>
+          <p
+            v-if="account.data.value.lastSyncError"
+            class="text-sm text-red-600 mt-2"
+          >
+            {{ account.data.value.lastSyncError }}
+          </p>
         </CardHeader>
-        <CardContent class="flex gap-2">
-          <Button @click="dialogOpen = true">Добавить позицию</Button>
+        <CardContent class="flex flex-wrap gap-2">
+          <Button v-if="isManual" @click="dialogOpen = true">Добавить позицию</Button>
+          <Button
+            v-else
+            :disabled="syncAccount.isPending.value || account.data.value.lastSyncStatus === 'pending'"
+            @click="handleSync"
+          >
+            {{ syncAccount.isPending.value ? "Синхронизирую…" : "Синхронизировать" }}
+          </Button>
           <Button variant="outline" @click="handleDeleteAccount">Удалить аккаунт</Button>
         </CardContent>
       </Card>
@@ -93,7 +147,7 @@ async function handleDeletePosition(instrumentId: string) {
                 <TableHead>Класс</TableHead>
                 <TableHead>Валюта</TableHead>
                 <TableHead class="text-right">Количество</TableHead>
-                <TableHead class="text-right">Действия</TableHead>
+                <TableHead v-if="isManual" class="text-right">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -102,7 +156,7 @@ async function handleDeletePosition(instrumentId: string) {
                 <TableCell>{{ p.instrument.assetClass }}</TableCell>
                 <TableCell>{{ p.instrument.currency }}</TableCell>
                 <TableCell class="text-right">{{ formatQuantity(p.quantity) }}</TableCell>
-                <TableCell class="text-right">
+                <TableCell v-if="isManual" class="text-right">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -117,7 +171,7 @@ async function handleDeletePosition(instrumentId: string) {
         </CardContent>
       </Card>
 
-      <AddPositionDialog v-model:open="dialogOpen" :account-id="accountId" />
+      <AddPositionDialog v-if="isManual" v-model:open="dialogOpen" :account-id="accountId" />
     </template>
   </div>
 </template>

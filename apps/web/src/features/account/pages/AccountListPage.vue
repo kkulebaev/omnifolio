@@ -1,42 +1,30 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useQueryClient } from "@tanstack/vue-query";
+import { useListAccounts } from "@/api/generated";
 import {
-  useListAccounts,
-  useCreateAccount,
-  getListAccountsQueryKey,
-} from "@/api/generated";
-import { AccountType } from "@/api/generated/model/accountType";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/formatters";
+import CreateAccountDialog from "../components/CreateAccountDialog.vue";
 
 const accounts = useListAccounts();
-const createMutation = useCreateAccount();
-const queryClient = useQueryClient();
-
 const dialogOpen = ref(false);
-const newName = ref("");
-const formError = ref<string | null>(null);
 
-async function submit() {
-  formError.value = null;
-  if (newName.value.trim().length === 0) {
-    formError.value = "Название обязательно";
-    return;
-  }
-  try {
-    await createMutation.mutateAsync({
-      data: { name: newName.value.trim(), type: AccountType.manual },
-    });
-    queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
-    newName.value = "";
-    dialogOpen.value = false;
-  } catch (e) {
-    formError.value = (e as Error).message;
+function statusBadge(s: string | null | undefined): { label: string; cls: string } | null {
+  switch (s) {
+    case "pending":
+      return { label: "синхр…", cls: "bg-yellow-200 text-yellow-900" };
+    case "success":
+      return { label: "ok", cls: "bg-green-200 text-green-900" };
+    case "failed":
+      return { label: "ошибка", cls: "bg-red-200 text-red-900" };
+    default:
+      return null;
   }
 }
 </script>
@@ -49,9 +37,7 @@ async function submit() {
     </div>
 
     <p v-if="accounts.isLoading.value" class="text-sm opacity-60">Загрузка…</p>
-    <p v-else-if="accounts.isError.value" class="text-sm text-red-600">
-      Не удалось загрузить
-    </p>
+    <p v-else-if="accounts.isError.value" class="text-sm text-red-600">Не удалось загрузить</p>
 
     <Card v-else-if="!accounts.data.value?.items?.length">
       <CardContent class="py-12 text-center space-y-2">
@@ -69,29 +55,24 @@ async function submit() {
       >
         <Card class="hover:bg-muted/30 transition">
           <CardHeader>
-            <CardTitle>{{ a.name }}</CardTitle>
-            <CardDescription>{{ a.type }} · создан {{ formatDate(a.createdAt) }}</CardDescription>
+            <div class="flex items-start justify-between gap-2">
+              <CardTitle>{{ a.name }}</CardTitle>
+              <span
+                v-if="statusBadge(a.lastSyncStatus)"
+                class="text-xs px-2 py-0.5 rounded-full"
+                :class="statusBadge(a.lastSyncStatus)!.cls"
+              >
+                {{ statusBadge(a.lastSyncStatus)!.label }}
+              </span>
+            </div>
+            <CardDescription>
+              {{ a.type }} · создан {{ formatDate(a.createdAt) }}
+            </CardDescription>
           </CardHeader>
         </Card>
       </RouterLink>
     </div>
 
-    <Dialog v-model:open="dialogOpen">
-      <h2 class="text-lg font-semibold mb-4">Новый аккаунт</h2>
-      <form class="space-y-4" @submit.prevent="submit">
-        <div class="space-y-1.5">
-          <Label for="acc-name">Название</Label>
-          <Input id="acc-name" v-model="newName" placeholder="Например, Бумажные" />
-        </div>
-        <p class="text-sm opacity-60">Тип: <code>manual</code> (другие в M2+).</p>
-        <p v-if="formError" class="text-sm text-red-600">{{ formError }}</p>
-        <div class="flex justify-end gap-2">
-          <Button type="button" variant="outline" @click="dialogOpen = false">Отмена</Button>
-          <Button type="submit" :disabled="createMutation.isPending.value">
-            {{ createMutation.isPending.value ? "Создаём…" : "Создать" }}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+    <CreateAccountDialog v-model:open="dialogOpen" />
   </div>
 </template>
