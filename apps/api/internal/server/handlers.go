@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/shopspring/decimal"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
+	"github.com/kkulebaev/omnifolio/api/internal/source"
 )
 
 type serverImpl struct {
@@ -107,19 +110,115 @@ func (s *serverImpl) CreateAccount(ctx context.Context, req oapi.CreateAccountRe
 		return createAccountValidationResp("missing body", nil), nil
 	}
 
-	a, err := s.deps.Account.Create(ctx, user.ID, account.CreateInput{
+	in := account.CreateInput{
 		Name: req.Body.Name,
 		Type: string(req.Body.Type),
-	})
+	}
+	if string(req.Body.Type) == account.TypeTInvest {
+		if req.Body.Token == nil || *req.Body.Token == "" {
+			return createAccountValidationResp("Validation failed",
+				map[string]string{"token": "required for type=tinvest"}), nil
+		}
+		if req.Body.TinvestAccountId == nil || *req.Body.TinvestAccountId == "" {
+			return createAccountValidationResp("Validation failed",
+				map[string]string{"tinvestAccountId": "required for type=tinvest"}), nil
+		}
+		in.TInvestToken = *req.Body.Token
+		in.TInvestAccountID = *req.Body.TinvestAccountId
+	}
+
+	a, err := s.deps.Account.Create(ctx, user.ID, in)
 	if err != nil {
-		if errors.Is(err, account.ErrTypeNotSupported) {
-			return createAccountValidationResp("Type not supported in this version",
-				map[string]string{"type": "manual is the only supported type"}), nil
+		switch {
+		case errors.Is(err, account.ErrTypeNotSupported):
+			return createAccountValidationResp("Type not supported",
+				map[string]string{"type": "supported types: manual, tinvest"}), nil
+		case errors.Is(err, account.ErrTokenInvalid):
+			return createAccountValidationResp("Invalid token",
+				map[string]string{"token": "rejected by T-Invest"}), nil
+		case errors.Is(err, source.ErrSubAccountNotFound):
+			return createAccountValidationResp("Sub-account not found",
+				map[string]string{"tinvestAccountId": "not found in your T-Invest account list"}), nil
 		}
 		return nil, err
 	}
 	s.deps.Logger.Info("account: created", "user_id", user.ID, "account_id", a.ID, "type", a.SourceType)
+
+	// For brokerage types kick off async first sync.
+	if a.SourceType != account.TypeManual && s.deps.Syncer != nil {
+		go func(id uuid.UUID) {
+			ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			_ = s.deps.Syncer.Sync(ctx2, id)
+		}(a.ID)
+	}
+
 	return oapi.CreateAccount201JSONResponse(toOapiAccount(a)), nil
+}
+
+func (s *serverImpl) PreviewTInvestAccounts(ctx context.Context, req oapi.PreviewTInvestAccountsRequestObject) (oapi.PreviewTInvestAccountsResponseObject, error) {
+	if _, ok := auth.UserFromContext(ctx); !ok {
+		return oapi.PreviewTInvestAccounts401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil || req.Body.Token == "" {
+		return oapi.PreviewTInvestAccounts422ApplicationProblemPlusJSONResponse{
+			ValidationErrorApplicationProblemPlusJSONResponse: validationProblem("Validation failed", map[string]string{"token": "required"}).build(),
+		}, nil
+	}
+	subs, err := s.deps.Account.PreviewTInvest(ctx, req.Body.Token)
+	if err != nil {
+		if errors.Is(err, account.ErrTokenInvalid) {
+			return oapi.PreviewTInvestAccounts422ApplicationProblemPlusJSONResponse{
+				ValidationErrorApplicationProblemPlusJSONResponse: validationProblem("Invalid token", map[string]string{"token": "rejected by T-Invest"}).build(),
+			}, nil
+		}
+		return nil, err
+	}
+	out := make([]oapi.TInvestSubAccount, len(subs))
+	for i, sub := range subs {
+		out[i] = oapi.TInvestSubAccount{
+			Id:   sub.ID,
+			Name: sub.Name,
+			Type: oapi.TInvestSubAccountType(sub.Type),
+		}
+	}
+	return oapi.PreviewTInvestAccounts200JSONResponse{SubAccounts: out}, nil
+}
+
+func (s *serverImpl) SyncAccount(ctx context.Context, req oapi.SyncAccountRequestObject) (oapi.SyncAccountResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.SyncAccount401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	a, err := s.deps.Account.Get(ctx, user.ID, req.AccountId)
+	if err != nil {
+		if errors.Is(err, account.ErrNotFound) {
+			return oapi.SyncAccount404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("account")),
+			}, nil
+		}
+		return nil, err
+	}
+	if a.SourceType == account.TypeManual {
+		return oapi.SyncAccount422ApplicationProblemPlusJSONResponse{
+			ValidationErrorApplicationProblemPlusJSONResponse: validationProblem("Manual accounts cannot be synced", nil).build(),
+		}, nil
+	}
+	if s.deps.Syncer == nil {
+		return nil, errors.New("syncer not configured")
+	}
+	_ = s.deps.Syncer.Sync(ctx, req.AccountId)
+
+	// Re-read to surface fresh status.
+	a, err = s.deps.Account.Get(ctx, user.ID, req.AccountId)
+	if err != nil {
+		return nil, err
+	}
+	return oapi.SyncAccount200JSONResponse(toOapiAccount(a)), nil
 }
 
 func (s *serverImpl) GetAccount(ctx context.Context, req oapi.GetAccountRequestObject) (oapi.GetAccountResponseObject, error) {

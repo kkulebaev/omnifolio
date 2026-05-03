@@ -51,6 +51,13 @@ const (
 	UsStock AssetClass = "us_stock"
 )
 
+// Defines values for TInvestSubAccountType.
+const (
+	BROKER  TInvestSubAccountType = "BROKER"
+	IIS     TInvestSubAccountType = "IIS"
+	PREMIUM TInvestSubAccountType = "PREMIUM"
+)
+
 // Account defines model for Account.
 type Account struct {
 	CreatedAt      time.Time          `json:"createdAt"`
@@ -90,10 +97,17 @@ type AccountType string
 // AssetClass defines model for AssetClass.
 type AssetClass string
 
-// CreateAccountRequest defines model for CreateAccountRequest.
+// CreateAccountRequest For type=manual only `name` and `type` are required.
+// For type=tinvest also `token` and `tinvestAccountId` must be provided.
 type CreateAccountRequest struct {
-	Name string      `json:"name"`
-	Type AccountType `json:"type"`
+	Name string `json:"name"`
+
+	// TinvestAccountId T-Invest sub-account id (required when type=tinvest)
+	TinvestAccountId *string `json:"tinvestAccountId,omitempty"`
+
+	// Token T-Invest read-only API token (required when type=tinvest)
+	Token *string     `json:"token,omitempty"`
+	Type  AccountType `json:"type"`
 }
 
 // CreateInstrumentRequest defines model for CreateInstrumentRequest.
@@ -192,6 +206,26 @@ type Problem struct {
 	Type     *string            `json:"type,omitempty"`
 }
 
+// TInvestPreviewRequest defines model for TInvestPreviewRequest.
+type TInvestPreviewRequest struct {
+	Token string `json:"token"`
+}
+
+// TInvestPreviewResponse defines model for TInvestPreviewResponse.
+type TInvestPreviewResponse struct {
+	SubAccounts []TInvestSubAccount `json:"subAccounts"`
+}
+
+// TInvestSubAccount defines model for TInvestSubAccount.
+type TInvestSubAccount struct {
+	Id   string                `json:"id"`
+	Name string                `json:"name"`
+	Type TInvestSubAccountType `json:"type"`
+}
+
+// TInvestSubAccountType defines model for TInvestSubAccount.Type.
+type TInvestSubAccountType string
+
 // UpdateAccountRequest defines model for UpdateAccountRequest.
 type UpdateAccountRequest struct {
 	Name string `json:"name"`
@@ -243,6 +277,9 @@ type GetPortfolioParams struct {
 // CreateAccountJSONRequestBody defines body for CreateAccount for application/json ContentType.
 type CreateAccountJSONRequestBody = CreateAccountRequest
 
+// PreviewTInvestAccountsJSONRequestBody defines body for PreviewTInvestAccounts for application/json ContentType.
+type PreviewTInvestAccountsJSONRequestBody = TInvestPreviewRequest
+
 // UpdateAccountJSONRequestBody defines body for UpdateAccount for application/json ContentType.
 type UpdateAccountJSONRequestBody = UpdateAccountRequest
 
@@ -266,6 +303,9 @@ type ServerInterface interface {
 	// Create account
 	// (POST /accounts)
 	CreateAccount(w http.ResponseWriter, r *http.Request)
+	// Preview T-Invest sub-accounts for a token
+	// (POST /accounts/tinvest/preview)
+	PreviewTInvestAccounts(w http.ResponseWriter, r *http.Request)
 	// Delete account
 	// (DELETE /accounts/{accountId})
 	DeleteAccount(w http.ResponseWriter, r *http.Request, accountId AccountId)
@@ -284,6 +324,9 @@ type ServerInterface interface {
 	// Update position quantity
 	// (PUT /accounts/{accountId}/positions/{instrumentId})
 	UpdatePosition(w http.ResponseWriter, r *http.Request, accountId AccountId, instrumentId InstrumentId)
+	// Trigger an immediate sync for a brokerage account
+	// (POST /accounts/{accountId}/sync)
+	SyncAccount(w http.ResponseWriter, r *http.Request, accountId AccountId)
 	// Login with email and password
 	// (POST /auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -323,6 +366,12 @@ func (_ Unimplemented) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Preview T-Invest sub-accounts for a token
+// (POST /accounts/tinvest/preview)
+func (_ Unimplemented) PreviewTInvestAccounts(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Delete account
 // (DELETE /accounts/{accountId})
 func (_ Unimplemented) DeleteAccount(w http.ResponseWriter, r *http.Request, accountId AccountId) {
@@ -356,6 +405,12 @@ func (_ Unimplemented) DeletePosition(w http.ResponseWriter, r *http.Request, ac
 // Update position quantity
 // (PUT /accounts/{accountId}/positions/{instrumentId})
 func (_ Unimplemented) UpdatePosition(w http.ResponseWriter, r *http.Request, accountId AccountId, instrumentId InstrumentId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Trigger an immediate sync for a brokerage account
+// (POST /accounts/{accountId}/sync)
+func (_ Unimplemented) SyncAccount(w http.ResponseWriter, r *http.Request, accountId AccountId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -441,6 +496,26 @@ func (siw *ServerInterfaceWrapper) CreateAccount(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewTInvestAccounts operation middleware
+func (siw *ServerInterfaceWrapper) PreviewTInvestAccounts(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewTInvestAccounts(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -645,6 +720,37 @@ func (siw *ServerInterfaceWrapper) UpdatePosition(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePosition(w, r, accountId, instrumentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SyncAccount operation middleware
+func (siw *ServerInterfaceWrapper) SyncAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "accountId" -------------
+	var accountId AccountId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accountId", chi.URLParam(r, "accountId"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accountId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncAccount(w, r, accountId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -935,6 +1041,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/accounts", wrapper.CreateAccount)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/accounts/tinvest/preview", wrapper.PreviewTInvestAccounts)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/accounts/{accountId}", wrapper.DeleteAccount)
 	})
 	r.Group(func(r chi.Router) {
@@ -951,6 +1060,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/accounts/{accountId}/positions/{instrumentId}", wrapper.UpdatePosition)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/accounts/{accountId}/sync", wrapper.SyncAccount)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/login", wrapper.Login)
@@ -1045,6 +1157,45 @@ type CreateAccount422ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response CreateAccount422ApplicationProblemPlusJSONResponse) VisitCreateAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewTInvestAccountsRequestObject struct {
+	Body *PreviewTInvestAccountsJSONRequestBody
+}
+
+type PreviewTInvestAccountsResponseObject interface {
+	VisitPreviewTInvestAccountsResponse(w http.ResponseWriter) error
+}
+
+type PreviewTInvestAccounts200JSONResponse TInvestPreviewResponse
+
+func (response PreviewTInvestAccounts200JSONResponse) VisitPreviewTInvestAccountsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewTInvestAccounts401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response PreviewTInvestAccounts401ApplicationProblemPlusJSONResponse) VisitPreviewTInvestAccountsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewTInvestAccounts422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response PreviewTInvestAccounts422ApplicationProblemPlusJSONResponse) VisitPreviewTInvestAccountsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(422)
 
@@ -1332,6 +1483,56 @@ func (response UpdatePosition422ApplicationProblemPlusJSONResponse) VisitUpdateP
 	return json.NewEncoder(w).Encode(response)
 }
 
+type SyncAccountRequestObject struct {
+	AccountId AccountId `json:"accountId"`
+}
+
+type SyncAccountResponseObject interface {
+	VisitSyncAccountResponse(w http.ResponseWriter) error
+}
+
+type SyncAccount200JSONResponse Account
+
+func (response SyncAccount200JSONResponse) VisitSyncAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SyncAccount401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response SyncAccount401ApplicationProblemPlusJSONResponse) VisitSyncAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SyncAccount404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response SyncAccount404ApplicationProblemPlusJSONResponse) VisitSyncAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SyncAccount422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response SyncAccount422ApplicationProblemPlusJSONResponse) VisitSyncAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type LoginRequestObject struct {
 	Body *LoginJSONRequestBody
 }
@@ -1540,6 +1741,9 @@ type StrictServerInterface interface {
 	// Create account
 	// (POST /accounts)
 	CreateAccount(ctx context.Context, request CreateAccountRequestObject) (CreateAccountResponseObject, error)
+	// Preview T-Invest sub-accounts for a token
+	// (POST /accounts/tinvest/preview)
+	PreviewTInvestAccounts(ctx context.Context, request PreviewTInvestAccountsRequestObject) (PreviewTInvestAccountsResponseObject, error)
 	// Delete account
 	// (DELETE /accounts/{accountId})
 	DeleteAccount(ctx context.Context, request DeleteAccountRequestObject) (DeleteAccountResponseObject, error)
@@ -1558,6 +1762,9 @@ type StrictServerInterface interface {
 	// Update position quantity
 	// (PUT /accounts/{accountId}/positions/{instrumentId})
 	UpdatePosition(ctx context.Context, request UpdatePositionRequestObject) (UpdatePositionResponseObject, error)
+	// Trigger an immediate sync for a brokerage account
+	// (POST /accounts/{accountId}/sync)
+	SyncAccount(ctx context.Context, request SyncAccountRequestObject) (SyncAccountResponseObject, error)
 	// Login with email and password
 	// (POST /auth/login)
 	Login(ctx context.Context, request LoginRequestObject) (LoginResponseObject, error)
@@ -1658,6 +1865,37 @@ func (sh *strictHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateAccountResponseObject); ok {
 		if err := validResponse.VisitCreateAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewTInvestAccounts operation middleware
+func (sh *strictHandler) PreviewTInvestAccounts(w http.ResponseWriter, r *http.Request) {
+	var request PreviewTInvestAccountsRequestObject
+
+	var body PreviewTInvestAccountsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewTInvestAccounts(ctx, request.(PreviewTInvestAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewTInvestAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewTInvestAccountsResponseObject); ok {
+		if err := validResponse.VisitPreviewTInvestAccountsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1837,6 +2075,32 @@ func (sh *strictHandler) UpdatePosition(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdatePositionResponseObject); ok {
 		if err := validResponse.VisitUpdatePositionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SyncAccount operation middleware
+func (sh *strictHandler) SyncAccount(w http.ResponseWriter, r *http.Request, accountId AccountId) {
+	var request SyncAccountRequestObject
+
+	request.AccountId = accountId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SyncAccount(ctx, request.(SyncAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SyncAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SyncAccountResponseObject); ok {
+		if err := validResponse.VisitSyncAccountResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2033,44 +2297,53 @@ func (sh *strictHandler) GetPortfolio(w http.ResponseWriter, r *http.Request, pa
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

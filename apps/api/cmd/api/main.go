@@ -21,7 +21,10 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
+	"github.com/kkulebaev/omnifolio/api/internal/source"
+	"github.com/kkulebaev/omnifolio/api/internal/source/tinvest"
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
+	"github.com/kkulebaev/omnifolio/api/internal/syncer"
 )
 
 func main() {
@@ -49,7 +52,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("encryptor: %w", err)
 	}
-	_ = encryptor // used in M2+ for broker credentials
 
 	idleTimeout, err := time.ParseDuration(cfg.SessionIdleTimeout)
 	if err != nil {
@@ -76,12 +78,20 @@ func run() error {
 	log.Info("migrations applied")
 
 	queries := storage.New(pool)
+
+	// Source registry (PositionSource per source_type, PriceProvider per source_type).
+	registry := source.NewRegistry()
+	tinvestClient := tinvest.NewClient()
+	registry.Positions[account.TypeTInvest] = tinvest.NewPositionSource(tinvestClient)
+	registry.Prices[account.TypeTInvest] = tinvest.NewPriceProvider(tinvestClient)
+
 	authSvc := auth.NewService(queries, idleTimeout, absoluteTimeout)
-	accountSvc := account.NewService(queries)
+	accountSvc := account.NewService(pool, encryptor, registry)
 	instrumentSvc := instrument.NewService(queries)
 	positionSvc := position.NewService(queries, accountSvc, instrumentSvc)
 	fxSvc := fx.NewService(queries, log)
 	portfolioSvc := portfolio.NewService(queries, fxSvc)
+	syncerSvc := syncer.NewService(pool, encryptor, registry, log)
 
 	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
 		Email:    cfg.BootstrapUserEmail,
@@ -117,6 +127,11 @@ func run() error {
 			Spec: "0 6 * * *",
 			Run:  fxSvc.Refresh,
 		},
+		scheduler.Job{
+			Name: "sync-brokerage-accounts",
+			Spec: "0 * * * *",
+			Run:  syncerSvc.SyncAll,
+		},
 	); err != nil {
 		return fmt.Errorf("scheduler: %w", err)
 	}
@@ -136,6 +151,7 @@ func run() error {
 		Instrument: instrumentSvc,
 		Position:   positionSvc,
 		Portfolio:  portfolioSvc,
+		Syncer:     syncerSvc,
 		Logger:     log,
 		Secure:     cfg.IsProduction(),
 		MaxAge:     int(absoluteTimeout / time.Second),

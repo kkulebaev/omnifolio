@@ -119,6 +119,57 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+  /accounts/tinvest/preview:
+    post:
+      tags: [accounts]
+      summary: Preview T-Invest sub-accounts for a token
+      operationId: previewTInvestAccounts
+      description: |
+        Validates a T-Invest token and returns the list of available sub-accounts
+        (брокерский / ИИС / премиум). Used by the UI before account creation so
+        the user can pick which sub-account to mirror.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TInvestPreviewRequest"
+      responses:
+        "200":
+          description: Sub-accounts list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TInvestPreviewResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /accounts/{accountId}/sync:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [accounts]
+      summary: Trigger an immediate sync for a brokerage account
+      operationId: syncAccount
+      description: |
+        Synchronously fetches positions and prices for a tinvest/bybit account.
+        Manual accounts return 422.
+      responses:
+        "200":
+          description: Synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /accounts/{accountId}:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -474,6 +525,9 @@ components:
     CreateAccountRequest:
       type: object
       required: [name, type]
+      description: |
+        For type=manual only `name` and `type` are required.
+        For type=tinvest also `token` and `tinvestAccountId` must be provided.
       properties:
         name:
           type: string
@@ -481,6 +535,44 @@ components:
           maxLength: 100
         type:
           $ref: "#/components/schemas/AccountType"
+        token:
+          type: string
+          minLength: 10
+          maxLength: 200
+          description: T-Invest read-only API token (required when type=tinvest)
+        tinvestAccountId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: T-Invest sub-account id (required when type=tinvest)
+
+    TInvestPreviewRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 10
+          maxLength: 200
+
+    TInvestSubAccount:
+      type: object
+      required: [id, name, type]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [BROKER, IIS, PREMIUM]
+
+    TInvestPreviewResponse:
+      type: object
+      required: [subAccounts]
+      properties:
+        subAccounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/TInvestSubAccount"
 
     UpdateAccountRequest:
       type: object

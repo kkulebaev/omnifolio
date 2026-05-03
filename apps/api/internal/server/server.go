@@ -17,6 +17,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
+	"github.com/kkulebaev/omnifolio/api/internal/syncer"
 )
 
 type Deps struct {
@@ -25,6 +26,7 @@ type Deps struct {
 	Instrument *instrument.Service
 	Position   *position.Service
 	Portfolio  *portfolio.Service
+	Syncer     *syncer.Service
 	Logger     *slog.Logger
 	Secure     bool
 	MaxAge     int

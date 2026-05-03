@@ -64,6 +64,29 @@ func (q *Queries) DeleteAccount(ctx context.Context, arg DeleteAccountParams) (i
 	return result.RowsAffected(), nil
 }
 
+const getAccountByID = `-- name: GetAccountByID :one
+SELECT id, user_id, source_type, name, last_synced_at, last_sync_status, last_sync_error, created_at, updated_at
+FROM accounts
+WHERE id = $1
+`
+
+func (q *Queries) GetAccountByID(ctx context.Context, id uuid.UUID) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByID, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SourceType,
+		&i.Name,
+		&i.LastSyncedAt,
+		&i.LastSyncStatus,
+		&i.LastSyncError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getAccountByUser = `-- name: GetAccountByUser :one
 SELECT id, user_id, source_type, name, last_synced_at, last_sync_status, last_sync_error, created_at, updated_at
 FROM accounts

@@ -8,6 +8,11 @@ SELECT id, user_id, source_type, name, last_synced_at, last_sync_status, last_sy
 FROM accounts
 WHERE id = $1 AND user_id = $2;
 
+-- name: GetAccountByID :one
+SELECT id, user_id, source_type, name, last_synced_at, last_sync_status, last_sync_error, created_at, updated_at
+FROM accounts
+WHERE id = $1;
+
 -- name: ListAccountsByUser :many
 SELECT id, user_id, source_type, name, last_synced_at, last_sync_status, last_sync_error, created_at, updated_at
 FROM accounts
