@@ -17,7 +17,7 @@ const breadcrumbs = computed<Array<{ label: string; to?: string }>>(() => {
     { label: "Omnifolio", to: "/" },
   ];
   if (route.path === "/") {
-    segments.push({ label: "Dashboard" });
+    segments.push({ label: "Дэшборд" });
   } else if (route.path.startsWith("/accounts")) {
     segments.push({ label: "Аккаунты", to: "/accounts" });
     if (route.params.id) {

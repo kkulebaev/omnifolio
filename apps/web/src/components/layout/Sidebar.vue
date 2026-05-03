@@ -11,7 +11,7 @@ const auth = useAuthStore();
 const ui = useUiStore();
 
 const navItems = [
-  { id: "dash", label: "Dashboard", icon: "◐", to: "/", enabled: true },
+  { id: "dash", label: "Дэшборд", icon: "◐", to: "/", enabled: true },
   { id: "acc", label: "Аккаунты", icon: "▤", to: "/accounts", enabled: true },
   { id: "ins", label: "Инструменты", icon: "⌗", to: "/instruments", enabled: false },
   { id: "set", label: "Настройки", icon: "⚙", to: "/settings", enabled: false },
