@@ -1186,19 +1186,28 @@ Mapper в `internal/server/handlers.go`:
 
 ### 19.1. T-Invest клиент и source-архитектура
 
-- **Клиент**: официальный SDK `github.com/russianinvestments/invest-api-go-sdk`.
-  Hand-rolled gRPC из `.proto` — отвергнуто как лишний maintenance.
+- **Клиент**: **REST API** (`https://invest-public-api.tinkoff.ru/rest/...`),
+  написанный руками поверх `net/http` + `encoding/json`. Без официального SDK
+  (он тянет grpc-стек, требующий Go 1.24+; конфликтует с нашим pinned 1.23
+  + долгий cold-cache build на cold network). REST endpoint-ы покрывают все
+  нужные методы (UsersService.GetAccounts, OperationsService.GetPortfolio,
+  MarketDataService.GetLastPrices, InstrumentsService.GetInstrumentBy) и
+  достаточны для M2.
+- **Trade-off**: теряем gRPC streaming (real-time котировок) — не используем
+  в M2 (отказались в M5+); теряем typed protobuf stubs — заменяем ручными
+  Go-структурами под нужные нам поля (~10 типов).
 - **Sub-accounts (1:1 mapping)**: один Omnifolio account = один T-Invest
   sub-account (брокерский / ИИС / премиум). При создании юзер вводит токен →
   выбирает один sub-account через UI → сохраняем `tinvestAccountId` в credentials.
 - **Token type**: рекомендуем read-only invest token. Не enforce-им (T-Invest
   не возвращает права в API), но в UI/README есть warning.
 - **Окружение**: только production. Sandbox не нужен (юзер хочет видеть свои
-  позиции). Тесты — через mock gRPC stubs.
-- **Расположение**: `internal/source/tinvest/`. Параллельно `internal/source/bybit/`
-  для M3.
+  позиции). Тесты — через httptest mock-server.
+- **Расположение**: `internal/source/tinvest/` (`client.go`, `quotation.go`,
+  `types.go`, `position_source.go`, `price_provider.go`, `credentials.go`,
+  `mapping.go`). Параллельно `internal/source/bybit/` для M3.
 
-**Интерфейсы** (новые в `internal/source/source.go`):
+**Интерфейсы** (`internal/source/source.go`):
 
 ```go
 type Position struct {
@@ -1219,8 +1228,15 @@ type Price struct {
     FetchedAt time.Time
 }
 
+type SubAccount struct {
+    ID   string
+    Name string
+    Type string  // BROKER, IIS, PREMIUM
+}
+
 type PositionSource interface {
-    Sync(ctx context.Context, creds []byte, sourceAccountID string) ([]Position, error)
+    ListSubAccounts(ctx context.Context, creds []byte) ([]SubAccount, error)
+    Sync(ctx context.Context, creds []byte, subAccountID string) ([]Position, error)
     ResolveInstrument(ctx context.Context, creds []byte, nativeID string) (InstrumentSeed, error)
 }
 
@@ -1229,7 +1245,8 @@ type PriceProvider interface {
 }
 ```
 
-`account.Service` инжектит `map[string]PositionSource` (key = source_type).
+`account.Service` инжектит `*source.Registry` с `Positions: map[string]PositionSource`
+(key = source_type) и `Prices: map[string]PriceProvider` (key = asset_class).
 
 ### 19.2. Account creation API (для tinvest)
 
