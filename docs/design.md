@@ -975,7 +975,7 @@ Mapper в `internal/server/handlers.go`:
 
 Транзакции появятся в M2 при account+credentials атомарном создании.
 
-### 17.8. M1.3 acceptance
+### 17.8. M1.3 acceptance (см. ниже §18 для M1.5 acceptance)
 
 1. Login (M1.2 уже есть).
 2. POST `/accounts {name: "Бумажные", type: "manual"}` → 201 + Account.
@@ -990,5 +990,191 @@ Mapper в `internal/server/handlers.go`:
 11. DELETE повторно → 404.
 12. DELETE `/accounts/:id` → 204; CASCADE удаляет оставшиеся positions.
 13. GET `/accounts/:id` чужого юзера (через раздельный токен) → 404.
+
+---
+
+## 18. Решения M1.5 (детализация)
+
+Решения, зафиксированные после грилла на frontend M1.5 (вопросы 34–36).
+Конкретизируют §15.7 для веб-интерфейса.
+
+### 18.1. UI setup
+
+- **shadcn-vue CLI init** (`pnpm dlx shadcn-vue@latest init`), затем
+  `pnpm dlx shadcn-vue@latest add <component>` для каждого нужного компонента.
+- **Минимальный набор M1.5**: Button, Card, Input, Label, Form (`<Form>`,
+  `<FormField>`, `<FormItem>`, `<FormLabel>`, `<FormControl>`, `<FormMessage>`),
+  Dialog, Table, Select, Sonner (toasts), Skeleton, DropdownMenu.
+- **Locale**: всё UI на русском. Технические идентификаторы (тикеры, asset_class
+  значения, валюты) — оставляем как есть (английские).
+- **i18n не подключаем** в M1.5 (один пользователь, один язык). Когда понадобится
+  multi-language — добавим vue-i18n.
+- **Theme**: light + dark с переключателем в Header DropdownMenu. CSS variables
+  уже подготовлены в `style.css`.
+
+### 18.2. Forms
+
+- **Pattern**: shadcn-vue `<Form>` обёртки над vee-validate. Каждое поле в
+  `<FormField name="x">` → `<FormItem>` → `<FormLabel>` → `<FormControl>` →
+  `<FormMessage>`. Связывание автоматическое.
+- **zod**: orval-generated zod-схемы из OpenAPI как baseline. Для feature-specific
+  правил — `.extend()`. Single source of truth — OpenAPI.
+- **`@vee-validate/zod`** через `toTypedSchema(schema)` — мост между zod и vee-validate.
+
+### 18.3. API client
+
+- **orval** генерит TS-клиент в `src/api/generated/`:
+  - `--client vue-query` — готовые `useXxxQuery` / `useXxxMutation`.
+  - `--mutator src/api/mutator.ts` — custom fetcher.
+- **Custom mutator** делает fetch с `credentials: 'include'` (cookie sid),
+  парсит non-2xx как `Problem`, бросает typed `HttpError`.
+- **Generation triggers**: Makefile target `generate` → `pnpm --filter web generate`
+  → orval CLI. После каждого изменения OpenAPI спеки — пересборка.
+
+### 18.4. Auth bootstrap flow
+
+- **`App.vue setup`** → `onMounted(() => authStore.bootstrap())`.
+- **`authStore.bootstrap()`** делает `meQuery.refetch()` (или прямой fetch через
+  mutator) → ставит `ready=true` независимо от результата.
+- До `ready === true` — глобальный spinner вместо `<RouterView>`.
+- **Router guard**:
+  ```ts
+  router.beforeEach(async (to) => {
+    await authStore.ready  // Promise resolves after bootstrap
+    if (to.meta.requiresAuth && !authStore.user) {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+    if (to.meta.requiresGuest && authStore.user) {
+      return { name: 'dashboard' }
+    }
+  })
+  ```
+
+### 18.5. Pinia stores
+
+- **`useAuthStore`** — обёртка над TanStack Query:
+  - `user = computed(() => meQuery.data.value)` — без duplicate state.
+  - `ready: Promise<void>` — резолвится после первого me-запроса.
+  - `login(credentials)` — мутация → setQueryData([me]).
+  - `logout()` — fetch /auth/logout → queryClient.clear() → router.push('/login').
+- **`useUiStore`** — UI client-state:
+  - `displayCurrency: string` (default = `user.displayCurrency`, persist via
+    localStorage через `pinia-plugin-persistedstate`).
+  - `theme: 'light' | 'dark'` (persist).
+
+### 18.6. Routes
+
+- `/login` (meta `requiresGuest: true`) → AuthLayout + LoginPage.
+- `/` (meta `requiresAuth: true`) → AppLayout + DashboardPage.
+- `/accounts` (`requiresAuth`) → AppLayout + AccountListPage.
+- `/accounts/:id` (`requiresAuth`) → AppLayout + AccountDetailPage.
+
+### 18.7. Login flow
+
+- `useLoginMutation` → on success: `queryClient.setQueryData(['/auth/me'], user)`,
+  router push на `route.query.redirect ?? '/'`.
+- on error 401 (Invalid credentials) → vee-validate `setErrors({email: 'Неверный email или пароль'})` (или toast).
+- on error 422 → `setErrors` с серверными `fields`.
+
+### 18.8. Logout flow (M1.5)
+
+- `useLogoutMutation` → fetch `/auth/logout` → `queryClient.clear()` →
+  `authStore.user = null` → router push `/login`.
+- Без BroadcastChannel (M5+).
+
+### 18.9. Dashboard composition
+
+- **Summary cards** (3 шт.):
+  - "Всего" — grandTotal в displayCurrency.
+  - "По классу активов" — top asset_class с долей % и значением.
+  - "Устаревшие цены" — счётчик позиций с `priceStale: true`.
+- **Currency selector в Header** (DropdownMenu), 3 валюты: RUB / USD / EUR
+  (хардкод; больше — в M5).
+- **Positions table** — все позиции, sort default by `valueDisplay desc`,
+  колонки: Ticker / Asset class / Quantity / Price / Value display.
+- **Без charts в M1.5** — отложено в M5.
+
+### 18.10. UI states
+
+- **Loading**: `<Skeleton>` placeholders, имитирующие финальный layout.
+- **Empty (no accounts)**: `<EmptyState>` с CTA "Создать первый аккаунт →"
+  → router push `/accounts`.
+- **Empty (no positions on dashboard)**: `<EmptyState>` "Нет позиций. Добавь
+  через [Аккаунты]".
+- **Error 5xx**: toast (Sonner) с retry кнопкой, cached data остаётся.
+- **Error 401 (на любом protected запросе)**: глобальный `queryCache.onError` →
+  authStore.logout() → router /login.
+
+### 18.11. Forms specifics
+
+- **LoginForm**: email + password. zod из orval `loginRequestZod`.
+- **CreateAccountDialog**: name + type (select). Type ограничен `manual`
+  на UI уровне (один option), хотя backend описывает три (forward-compat).
+- **AddPositionDialog (hybrid flow)**:
+  1. Tab 1 "Поиск": `<InstrumentSearch>` (autocomplete по name/ticker через
+     `useSearchInstrumentsQuery({ q })` debounced 300ms).
+  2. Если выбрал — quantity input → save → `useCreatePositionMutation`.
+  3. Если не нашёл — Tab 2 "Создать вручную": ticker / asset_class / currency /
+     name → `useCreateInstrumentMutation` → получаем `instrumentId` →
+     `useCreatePositionMutation`.
+- **EditPositionDialog**: только quantity input → `useUpdatePositionMutation`.
+- **Delete confirmations**: AlertDialog (shadcn-vue compoonent, добавим если
+  потребуется), хардкод "Уверены?" → mutation.
+
+### 18.12. Error handling layers
+
+- **Mutator (lowest)**: парсит non-2xx → `HttpError(status, problem)`.
+- **TanStack queryCache.onError (global)**:
+  - 401 → authStore.logout() → /login.
+  - 5xx → toast.error("Что-то пошло не так").
+- **per-mutation onError (highest)**:
+  - 422 + fields → form.setErrors(fields).
+  - 409 → toast.error(problem.detail).
+
+### 18.13. Number/date formatting
+
+- **`useFormatters()` composable** в `lib/formatters.ts`:
+  - `currency(amount: string|number, code: string): string` — `Intl.NumberFormat`.
+  - `quantity(amount: string|number): string` — `Intl.NumberFormat` без currency.
+  - `date(d: Date|string): string` — относительное "5 минут назад" /
+    `Intl.RelativeTimeFormat` или fallback на абсолютное.
+
+### 18.14. Зависимости (M1.5)
+
+К существующему `apps/web/package.json` добавить:
+
+```
+"dependencies":
+  "vue-router": "^4.4.5"
+  "pinia": "^2.2.6"
+  "pinia-plugin-persistedstate": "^4.1.3"
+  "@tanstack/vue-query": "^5.62.0"
+  "vee-validate": "^4.14.6"
+  "zod": "^3.23.8"
+  "@vee-validate/zod": "^4.14.6"
+  "vue-sonner": "^1.3.0"
+  "@vueuse/core": "^11.3.0"
+  "radix-vue": "^1.9.10"
+  "lucide-vue-next": "^0.460.0"
+
+"devDependencies":
+  "orval": "^7.3.0"
+```
+
+### 18.15. M1.5 acceptance
+
+1. `make services` поднимает api+postgres. `pnpm --filter web dev` поднимает Vite.
+2. `http://localhost:5173/` редиректит на `/login`.
+3. Login `dev@local.test` / `devpassword12345` → редирект `/`.
+4. Header показывает email + currency dropdown + theme toggle + logout.
+5. Empty state "Создать первый аккаунт → /accounts".
+6. На `/accounts` создать manual account.
+7. На `/accounts/:id` "Add position" → search "AAPL" → пусто → "Создать вручную"
+   → ticker=AAPL, asset_class=us_stock, currency=USD, name=Apple Inc. → quantity=10 → Save.
+8. На `/` видим позицию AAPL × 10 в таблице, priceStale=true (нет цены).
+9. Через SQL вставить price → reload `/` → видим valueDisplay.
+10. Переключить валюту USD ↔ RUB в header → grand total меняется.
+11. Theme toggle dark/light работает, persist в localStorage.
+12. Logout → редирект /login + cleared cache.
 
 
