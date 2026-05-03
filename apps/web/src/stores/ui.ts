@@ -6,6 +6,7 @@ export type DisplayCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 const LS_CURRENCY = "omnifolio:displayCurrency";
 const LS_THEME = "omnifolio:theme";
+const LS_PRIVACY = "omnifolio:privacy";
 
 export const useUiStore = defineStore("ui", () => {
   const stored = (localStorage.getItem(LS_CURRENCY) as DisplayCurrency | null) ?? "RUB";
@@ -37,10 +38,20 @@ export const useUiStore = defineStore("ui", () => {
     theme.value = theme.value === "light" ? "dark" : "light";
   }
 
+  const privacy = ref<boolean>(localStorage.getItem(LS_PRIVACY) === "1");
+  watch(privacy, (v) => {
+    localStorage.setItem(LS_PRIVACY, v ? "1" : "0");
+  });
+  function togglePrivacy() {
+    privacy.value = !privacy.value;
+  }
+
   return {
     displayCurrency,
     theme,
     toggleTheme,
+    privacy,
+    togglePrivacy,
     SUPPORTED_CURRENCIES,
   };
 });

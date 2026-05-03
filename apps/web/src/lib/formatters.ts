@@ -12,10 +12,54 @@ export function formatCurrency(amount: string | number, currency: string): strin
   }
 }
 
+export function formatCompact(amount: string | number, currency: string): string {
+  const num = typeof amount === "string" ? Number(amount) : amount;
+  if (!Number.isFinite(num)) return "—";
+  const sym = currencySymbol(currency);
+  if (Math.abs(num) >= 1_000_000) {
+    return (
+      new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(num / 1_000_000) +
+      ` млн ${sym}`
+    );
+  }
+  if (Math.abs(num) >= 1_000) {
+    return (
+      new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(num / 1_000) +
+      ` тыс ${sym}`
+    );
+  }
+  return formatCurrency(num, currency);
+}
+
+function currencySymbol(c: string): string {
+  switch (c) {
+    case "RUB":
+      return "₽";
+    case "USD":
+    case "USDT":
+    case "USDC":
+    case "BUSD":
+      return "$";
+    case "EUR":
+      return "€";
+    default:
+      return c;
+  }
+}
+
 export function formatQuantity(amount: string | number): string {
   const num = typeof amount === "string" ? Number(amount) : amount;
   if (!Number.isFinite(num)) return "—";
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 8 }).format(num);
+}
+
+export function formatNumber(amount: string | number, fractionDigits = 2): string {
+  const num = typeof amount === "string" ? Number(amount) : amount;
+  if (!Number.isFinite(num)) return "—";
+  return new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: 0,
+  }).format(num);
 }
 
 export function formatPercent(part: number, total: number): string {
