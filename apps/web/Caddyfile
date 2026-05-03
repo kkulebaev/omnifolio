@@ -1,0 +1,19 @@
+{
+	auto_https off
+	admin off
+}
+
+:{$PORT}
+
+encode gzip
+
+handle /api/* {
+	uri strip_prefix /api
+	reverse_proxy {$API_INTERNAL_URL}
+}
+
+handle {
+	root * /usr/share/caddy
+	try_files {path} /index.html
+	file_server
+}
