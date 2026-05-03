@@ -11,6 +11,26 @@ import (
 	"github.com/google/uuid"
 )
 
+const countInstruments = `-- name: CountInstruments :one
+SELECT COUNT(*)::bigint
+FROM instruments
+WHERE
+    ($1::text = '' OR ticker ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+    AND ($2::text = '' OR asset_class = $2)
+`
+
+type CountInstrumentsParams struct {
+	Q          string
+	AssetClass string
+}
+
+func (q *Queries) CountInstruments(ctx context.Context, arg CountInstrumentsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countInstruments, arg.Q, arg.AssetClass)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createInstrument = `-- name: CreateInstrument :one
 INSERT INTO instruments (id, ticker, asset_class, currency, name)
 VALUES ($1, $2, $3, $4, $5)
@@ -91,6 +111,56 @@ func (q *Queries) GetInstrumentByTickerAssetClass(ctx context.Context, arg GetIn
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listInstruments = `-- name: ListInstruments :many
+SELECT id, ticker, asset_class, currency, name, created_at, updated_at
+FROM instruments
+WHERE
+    ($1::text = '' OR ticker ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+    AND ($2::text = '' OR asset_class = $2)
+ORDER BY ticker
+LIMIT $4 OFFSET $3
+`
+
+type ListInstrumentsParams struct {
+	Q          string
+	AssetClass string
+	Off        int32
+	Lim        int32
+}
+
+func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams) ([]Instrument, error) {
+	rows, err := q.db.Query(ctx, listInstruments,
+		arg.Q,
+		arg.AssetClass,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Instrument
+	for rows.Next() {
+		var i Instrument
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ticker,
+			&i.AssetClass,
+			&i.Currency,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const searchInstruments = `-- name: SearchInstruments :many

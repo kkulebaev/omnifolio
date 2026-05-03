@@ -119,6 +119,42 @@ func (s *Service) Search(ctx context.Context, q string) ([]Instrument, error) {
 	return out, nil
 }
 
+type ListInput struct {
+	Q          string
+	AssetClass string
+	Limit      int32
+	Offset     int32
+}
+
+type ListResult struct {
+	Items []Instrument
+	Total int64
+}
+
+func (s *Service) List(ctx context.Context, in ListInput) (ListResult, error) {
+	rows, err := s.q.ListInstruments(ctx, storage.ListInstrumentsParams{
+		Q:          in.Q,
+		AssetClass: in.AssetClass,
+		Lim:        in.Limit,
+		Off:        in.Offset,
+	})
+	if err != nil {
+		return ListResult{}, fmt.Errorf("list: %w", err)
+	}
+	total, err := s.q.CountInstruments(ctx, storage.CountInstrumentsParams{
+		Q:          in.Q,
+		AssetClass: in.AssetClass,
+	})
+	if err != nil {
+		return ListResult{}, fmt.Errorf("count: %w", err)
+	}
+	items := make([]Instrument, len(rows))
+	for i, row := range rows {
+		items[i] = toInstrument(row)
+	}
+	return ListResult{Items: items, Total: total}, nil
+}
+
 func toInstrument(row storage.Instrument) Instrument {
 	return Instrument{
 		ID:         row.ID,

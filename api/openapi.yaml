@@ -315,6 +315,48 @@ paths:
           $ref: "#/components/responses/Unauthorized"
 
   /instruments:
+    get:
+      tags: [instruments]
+      summary: List instruments with optional search and pagination
+      operationId: listInstruments
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Filter by ticker or name (case-insensitive substring).
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+        - name: assetClass
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AssetClass"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Paginated list of instruments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstrumentList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       tags: [instruments]
       summary: Create instrument manually
@@ -623,12 +665,16 @@ components:
 
     InstrumentList:
       type: object
-      required: [items]
+      required: [items, total]
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/Instrument"
+        total:
+          type: integer
+          minimum: 0
+          description: Total instruments matching the filter (for pagination).
 
     CreateInstrumentRequest:
       type: object

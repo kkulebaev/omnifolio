@@ -425,7 +425,39 @@ func (s *serverImpl) SearchInstruments(ctx context.Context, req oapi.SearchInstr
 	for i, x := range rows {
 		items[i] = toOapiInstrument(x)
 	}
-	return oapi.SearchInstruments200JSONResponse{Items: items}, nil
+	return oapi.SearchInstruments200JSONResponse{Items: items, Total: len(items)}, nil
+}
+
+func (s *serverImpl) ListInstruments(ctx context.Context, req oapi.ListInstrumentsRequestObject) (oapi.ListInstrumentsResponseObject, error) {
+	if _, ok := auth.UserFromContext(ctx); !ok {
+		return oapi.ListInstruments401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+
+	in := instrument.ListInput{Limit: 50, Offset: 0}
+	if req.Params.Q != nil {
+		in.Q = *req.Params.Q
+	}
+	if req.Params.AssetClass != nil {
+		in.AssetClass = string(*req.Params.AssetClass)
+	}
+	if req.Params.Limit != nil {
+		in.Limit = int32(*req.Params.Limit)
+	}
+	if req.Params.Offset != nil {
+		in.Offset = int32(*req.Params.Offset)
+	}
+
+	res, err := s.deps.Instrument.List(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]oapi.Instrument, len(res.Items))
+	for i, x := range res.Items {
+		items[i] = toOapiInstrument(x)
+	}
+	return oapi.ListInstruments200JSONResponse{Items: items, Total: int(res.Total)}, nil
 }
 
 func (s *serverImpl) CreateInstrument(ctx context.Context, req oapi.CreateInstrumentRequestObject) (oapi.CreateInstrumentResponseObject, error) {

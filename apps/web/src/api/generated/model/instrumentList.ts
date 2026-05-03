@@ -9,4 +9,9 @@ import type { Instrument } from './instrument';
 
 export interface InstrumentList {
   items: Instrument[];
+  /**
+   * Total instruments matching the filter (for pagination).
+   * @minimum 0
+   */
+  total: number;
 }

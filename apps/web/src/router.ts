@@ -26,6 +26,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import("@/features/account/pages/AccountDetailPage.vue"),
     meta: { layout: "app", requiresAuth: true },
   },
+  {
+    path: "/instruments",
+    name: "instruments",
+    component: () => import("@/features/instrument/pages/InstrumentListPage.vue"),
+    meta: { layout: "app", requiresAuth: true },
+  },
 ];
 
 export const router = createRouter({

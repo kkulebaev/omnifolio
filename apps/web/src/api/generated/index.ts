@@ -41,6 +41,7 @@ import type {
   Health,
   Instrument,
   InstrumentList,
+  ListInstrumentsParams,
   LoginRequest,
   NotFoundResponse,
   Portfolio,
@@ -1049,6 +1050,76 @@ export function useSearchInstruments<TData = Awaited<ReturnType<typeof searchIns
  ): UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getSearchInstrumentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
+
+  return query;
+}
+
+
+
+
+
+/**
+ * @summary List instruments with optional search and pagination
+ */
+export const listInstruments = (
+    params?: MaybeRef<ListInstrumentsParams>,
+ signal?: AbortSignal
+) => {
+      params = unref(params);
+      
+      return fetcher<InstrumentList>(
+      {url: `/instruments`, method: 'GET',
+        params: unref(params), signal
+    },
+      );
+    }
+  
+
+
+
+export const getListInstrumentsQueryKey = (params?: MaybeRef<ListInstrumentsParams>,) => {
+    return [
+    'instruments', ...(params ? [params]: [])
+    ] as const;
+    }
+
+    
+export const getListInstrumentsQueryOptions = <TData = Awaited<ReturnType<typeof listInstruments>>, TError = UnauthorizedResponse>(params?: MaybeRef<ListInstrumentsParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInstruments>>, TError, TData>>, }
+) => {
+
+const {query: queryOptions} = options ?? {};
+
+  const queryKey =  getListInstrumentsQueryKey(params);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInstruments>>> = ({ signal }) => listInstruments(params, signal);
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInstruments>>, TError, TData> 
+}
+
+export type ListInstrumentsQueryResult = NonNullable<Awaited<ReturnType<typeof listInstruments>>>
+export type ListInstrumentsQueryError = UnauthorizedResponse
+
+
+/**
+ * @summary List instruments with optional search and pagination
+ */
+
+export function useListInstruments<TData = Awaited<ReturnType<typeof listInstruments>>, TError = UnauthorizedResponse>(
+ params?: MaybeRef<ListInstrumentsParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInstruments>>, TError, TData>>, }
+ , queryClient?: QueryClient 
+ ): UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListInstrumentsQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

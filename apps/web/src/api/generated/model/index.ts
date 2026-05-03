@@ -22,6 +22,7 @@ export * from './getPortfolioParams';
 export * from './health';
 export * from './instrument';
 export * from './instrumentList';
+export * from './listInstrumentsParams';
 export * from './loginRequest';
 export * from './notFoundResponse';
 export * from './portfolio';
