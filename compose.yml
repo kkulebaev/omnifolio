@@ -25,10 +25,12 @@ services:
       - "8080:8080"
     environment:
       PORT: 8080
+      ENV: dev
       DATABASE_URL: postgres://omnifolio:omnifolio@postgres:5432/omnifolio?sslmode=disable
       MASTER_KEY: ZGV2X21hc3Rlcl9rZXlfMzJfYnl0ZXNfYjY0Xw==
-      SESSION_SECRET: dev_session_secret_change_in_prod
       LOG_LEVEL: debug
+      BOOTSTRAP_USER_EMAIL: dev@local
+      BOOTSTRAP_USER_PASSWORD: devpassword12345
     depends_on:
       postgres:
         condition: service_healthy

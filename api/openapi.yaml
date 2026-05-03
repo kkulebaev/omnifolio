@@ -1,16 +1,27 @@
 openapi: 3.0.3
 info:
   title: Omnifolio API
-  version: 0.0.1
+  version: 0.1.0
   description: Personal investments tracker.
 servers:
-  - url: http://localhost:8080
-    description: Local dev
+  - url: /api
+    description: Local dev (proxied via Vite or Caddy)
+
+tags:
+  - name: system
+  - name: auth
+  - name: accounts
+  - name: positions
+  - name: instruments
+  - name: portfolio
+
 paths:
   /healthz:
     get:
+      tags: [system]
       summary: Liveness probe
       operationId: getHealthz
+      security: []
       responses:
         "200":
           description: OK
@@ -18,7 +29,329 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login with email and password
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in; sets session cookie
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: sid=...; HttpOnly; SameSite=Lax; Path=/
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout current session
+      operationId: logout
+      responses:
+        "204":
+          description: Logged out
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user
+      operationId: getMe
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /accounts:
+    get:
+      tags: [accounts]
+      summary: List user accounts
+      operationId: listAccounts
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [accounts]
+      summary: Create account
+      operationId: createAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /accounts/{accountId}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [accounts]
+      summary: Get account with positions
+      operationId: getAccount
+      responses:
+        "200":
+          description: Account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [accounts]
+      summary: Update account (rename)
+      operationId: updateAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAccountRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [accounts]
+      summary: Delete account
+      operationId: deleteAccount
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounts/{accountId}/positions:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [positions]
+      summary: Add position to account
+      operationId: createPosition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePositionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Position"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /accounts/{accountId}/positions/{instrumentId}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - $ref: "#/components/parameters/InstrumentId"
+    put:
+      tags: [positions]
+      summary: Update position quantity
+      operationId: updatePosition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePositionRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Position"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [positions]
+      summary: Delete position
+      operationId: deletePosition
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /instruments/search:
+    get:
+      tags: [instruments]
+      summary: Search instruments by ticker or name
+      operationId: searchInstruments
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+      responses:
+        "200":
+          description: Matching instruments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstrumentList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /instruments:
+    post:
+      tags: [instruments]
+      summary: Create instrument manually
+      operationId: createInstrument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInstrumentRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instrument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /portfolio:
+    get:
+      tags: [portfolio]
+      summary: Aggregated portfolio across all accounts
+      operationId: getPortfolio
+      parameters:
+        - name: currency
+          in: query
+          required: false
+          description: Display currency. Defaults to user's preference.
+          schema:
+            type: string
+            pattern: "^[A-Z]{3,5}$"
+      responses:
+        "200":
+          description: Portfolio aggregation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Portfolio"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
 components:
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InstrumentId:
+      name: instrumentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: Resource conflict (e.g., duplicate)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ValidationError:
+      description: Validation failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
   schemas:
     Health:
       type: object
@@ -27,3 +360,319 @@ components:
         status:
           type: string
           example: ok
+
+    Problem:
+      type: object
+      description: RFC 7807 Problem Details
+      required: [title, status]
+      properties:
+        type:
+          type: string
+          example: /errors/validation
+        title:
+          type: string
+          example: Validation failed
+        status:
+          type: integer
+          example: 422
+        detail:
+          type: string
+        instance:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+
+    User:
+      type: object
+      required: [id, email, displayCurrency, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayCurrency:
+          type: string
+          pattern: "^[A-Z]{3,5}$"
+        createdAt:
+          type: string
+          format: date-time
+
+    AccountType:
+      type: string
+      enum: [manual, tinvest, bybit]
+
+    AccountSyncStatus:
+      type: string
+      enum: [success, failed, pending]
+
+    Account:
+      type: object
+      required: [id, name, type, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/AccountType"
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSyncStatus:
+          allOf:
+            - $ref: "#/components/schemas/AccountSyncStatus"
+          nullable: true
+        lastSyncError:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AccountDetail:
+      allOf:
+        - $ref: "#/components/schemas/Account"
+        - type: object
+          required: [positions]
+          properties:
+            positions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Position"
+
+    AccountList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
+
+    CreateAccountRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          $ref: "#/components/schemas/AccountType"
+
+    UpdateAccountRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    AssetClass:
+      type: string
+      enum: [ru_stock, ru_bond, ru_etf, us_stock, us_etf, crypto]
+
+    Instrument:
+      type: object
+      required: [id, ticker, assetClass, currency, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticker:
+          type: string
+        assetClass:
+          $ref: "#/components/schemas/AssetClass"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3,5}$"
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    InstrumentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Instrument"
+
+    CreateInstrumentRequest:
+      type: object
+      required: [ticker, assetClass, currency, name]
+      properties:
+        ticker:
+          type: string
+          pattern: "^[A-Z0-9._-]{1,20}$"
+        assetClass:
+          $ref: "#/components/schemas/AssetClass"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3,5}$"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    Position:
+      type: object
+      required: [accountId, instrument, quantity, updatedAt]
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        instrument:
+          $ref: "#/components/schemas/Instrument"
+        quantity:
+          type: string
+          description: Decimal as string (NUMERIC 38,18)
+          example: "10.5"
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePositionRequest:
+      type: object
+      required: [instrumentId, quantity]
+      properties:
+        instrumentId:
+          type: string
+          format: uuid
+        quantity:
+          type: string
+          description: Decimal > 0 as string
+          example: "10"
+
+    UpdatePositionRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: string
+          description: Decimal > 0 as string
+
+    PortfolioPosition:
+      type: object
+      required:
+        [
+          accountId,
+          accountName,
+          instrumentId,
+          ticker,
+          assetClass,
+          currency,
+          quantity,
+          valueDisplay,
+          priceStale,
+        ]
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        accountName:
+          type: string
+        instrumentId:
+          type: string
+          format: uuid
+        ticker:
+          type: string
+        assetClass:
+          $ref: "#/components/schemas/AssetClass"
+        currency:
+          type: string
+        quantity:
+          type: string
+        price:
+          type: string
+          nullable: true
+        valueNative:
+          type: string
+          nullable: true
+        valueDisplay:
+          type: string
+          nullable: true
+        priceFetchedAt:
+          type: string
+          format: date-time
+          nullable: true
+        priceStale:
+          type: boolean
+
+    PortfolioSummary:
+      type: object
+      required:
+        [
+          displayCurrency,
+          grandTotal,
+          byAssetClass,
+          byCurrency,
+          byAccount,
+        ]
+      properties:
+        displayCurrency:
+          type: string
+        grandTotal:
+          type: string
+          description: Total in display currency
+        byAssetClass:
+          type: object
+          additionalProperties:
+            type: string
+        byCurrency:
+          type: object
+          additionalProperties:
+            type: string
+        byAccount:
+          type: object
+          additionalProperties:
+            type: string
+
+    Portfolio:
+      type: object
+      required: [summary, positions]
+      properties:
+        summary:
+          $ref: "#/components/schemas/PortfolioSummary"
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortfolioPosition"
+
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: sid
+
+security:
+  - sessionCookie: []

@@ -2,61 +2,82 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/kkulebaev/omnifolio/api/internal/config"
+	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
+	"github.com/kkulebaev/omnifolio/api/internal/server"
+	"github.com/kkulebaev/omnifolio/api/internal/storage"
 )
 
 func main() {
-	logger := newLogger(os.Getenv("LOG_LEVEL"))
-	slog.SetDefault(logger)
+	if err := run(); err != nil {
+		slog.Error("fatal", "err", err)
+		os.Exit(1)
+	}
+}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthz)
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 
-	addr := ":" + getenv("PORT", "8080")
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
+	log := newLogger(cfg.LogLevel)
+	slog.SetDefault(log)
+	log.Info("starting", "env", cfg.Env, "port", cfg.Port)
+
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := storage.NewPool(rootCtx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("db pool: %w", err)
+	}
+	defer pool.Close()
+	log.Info("db pool ready")
+
+	if err := storage.Migrate(rootCtx, pool); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	log.Info("migrations applied")
+
+	sched := scheduler.New(log)
+	sched.Start()
+	defer sched.Stop()
+
+	srv := server.New(pool, log)
+	httpSrv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	go func() {
-		logger.Info("starting api", "addr", addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("server failed", "err", err)
-			os.Exit(1)
+		log.Info("listening", "addr", httpSrv.Addr)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("http listen", "err", err)
+			stop()
 		}
 	}()
 
-	<-ctx.Done()
-	logger.Info("shutting down")
+	<-rootCtx.Done()
+	log.Info("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful shutdown failed", "err", err)
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+		log.Error("graceful shutdown", "err", err)
 	}
-}
-
-func healthz(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func getenv(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
+	log.Info("bye")
+	return nil
 }
 
 func newLogger(level string) *slog.Logger {

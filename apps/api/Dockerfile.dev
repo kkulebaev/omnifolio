@@ -5,11 +5,11 @@ WORKDIR /app
 RUN apk add --no-cache git \
     && go install github.com/air-verse/air@v1.61.5
 
-COPY go.mod ./
+COPY go.mod go.sum* ./
 RUN go mod download || true
 
 COPY . .
 
 EXPOSE 8080
 
-CMD ["air", "-c", ".air.toml"]
+CMD ["sh", "-c", "go mod tidy && air -c .air.toml"]
