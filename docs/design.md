@@ -838,3 +838,157 @@ apps/web/src/
 - Sessions UI ("где я залогинен", revoke).
 - BroadcastChannel logout sync между табами.
 
+---
+
+## 17. Решения M1.3 (детализация)
+
+Решения, зафиксированные после интервью на тему accounts/instruments/positions
+(вопросы 30–33). Конкретизируют §15 для CRUD-фич.
+
+### 17.1. Authorization enforcement
+
+- **Hybrid service + repository**:
+  - Service-сигнатуры всегда принимают `userID` первым параметром:
+    `Get(ctx, userID, accountID)`, `Delete(ctx, userID, accountID)`.
+  - Repository (sqlc) queries фильтруют по `WHERE id = $1 AND user_id = $2`
+    везде, где сущность user-owned. Defense-in-depth: даже если service забыл
+    проверку, repo не вернёт чужой ресурс.
+- **Handler boilerplate**: явный вызов
+  `user := auth.MustUserFromContext(ctx); res, err := svc.X(ctx, user.ID, params)`
+  в каждом handler. Не выделяем custom oapi middleware.
+- **Error на чужой ресурс — 404 Not Found** (security best practice):
+  не палим существование. Repository query без results → `ErrNotFound` →
+  404. Не различаем "не существует" / "не твой".
+- **Multi-step ownership** (positions через accounts): один SQL с JOIN, не
+  два запроса. Атомарно, без race-окна.
+  ```sql
+  SELECT p.*, i.* FROM positions p
+    JOIN accounts a ON p.account_id = a.id
+    JOIN instruments i ON p.instrument_id = i.id
+  WHERE a.user_id = $1 AND a.id = $2 AND p.instrument_id = $3
+  ```
+- **Concurrency на дублирующий POST**: чистый INSERT и catch
+  `pgconn.PgError.Code == "23505"` (unique_violation) → `ErrConflict` → 409.
+  Без UPSERT.
+- **Без ownership-cache в session** — каждый запрос делает свежий lookup
+  через JOIN. Дёшево, корректно.
+
+### 17.2. Account types в M1.3
+
+- **Только `manual`**. POST /accounts с `type: tinvest|bybit` отвергается:
+  422 + `fields: {type: "manual is the only supported type in this version"}`.
+  OpenAPI спека описывает все три (forward-compat), service enforce-ит.
+- **`name`**: обязательный, 1..100 chars, без uniqueness per user.
+- **Без `default_currency` на account** — валюта позиции определяется
+  `instruments.currency`. Per-account валюта не нужна.
+- **Без cosmetic полей** в M1.3 (color, description, sort_order). Добавим
+  в M5 polish при необходимости.
+- **POST /accounts response** — возвращает `Account` с пустым массивом
+  `positions[]` (унификация с GET /accounts/:id формой `AccountDetail`).
+- **manual flow** в M1.3: `account.SourceType = 'manual'`,
+  `LastSyncStatus = nil`, `LastSyncError = nil`. Без credentials.
+  Без sync.
+
+### 17.3. Instruments lifecycle
+
+- **Anyone creates global**: instruments — глобальный канонический
+  справочник без `user_id`. Любой залогиненный юзер может создать.
+- **Search**: простой `ILIKE '%' || $1 || '%' OR name ILIKE ...`,
+  hard-limit 20, ORDER BY exact-match-first затем алфавит. Без full-text
+  и trigram до M5+.
+- **Hard-dedup через UNIQUE constraint**:
+  - Миграция `0002_instruments_unique.sql`:
+    ```sql
+    CREATE UNIQUE INDEX instruments_ticker_asset_class_uidx
+    ON instruments (LOWER(ticker), asset_class);
+    ```
+  - POST /instruments в service: SELECT по `(LOWER(ticker), asset_class)`,
+    если найден — возвращаем существующий instrument (idempotent), иначе
+    INSERT. На race с конкурентным INSERT — catch `23505` и повторный
+    SELECT.
+  - Это пересмотр Q20e (там сказано "никакого UNIQUE на ticker"). Уточнение:
+    UNIQUE не на `ticker` сам по себе, а на пару `(LOWER(ticker), asset_class)`.
+    `MMM/us_stock` и `MMM/ru_stock` остаются разными — задача решена.
+- **No DELETE** через API в M1. Каталог append-only.
+- **Global visibility**: search возвращает любые instruments всем юзерам.
+
+### 17.4. Position lifecycle
+
+- **Quantity > 0** обязательно. Удаление — DELETE endpoint, не quantity=0.
+  Negative (shorts) — out of scope MVP.
+- **PUT строго update**: PUT `/accounts/:id/positions/:instrumentId` →
+  обновляет quantity существующей позиции; если нет → 404. UPSERT-семантику
+  делаем через POST.
+- **POST конфликт**: POST `/accounts/:id/positions` с `instrumentId`,
+  который уже есть → 409 (с сообщением "use PUT to update"). Без accumulate
+  и без overwrite.
+- **DELETE**: 204 если удалили, 404 если не было. Не idempotent, чтобы
+  юзер видел расхождение если кликнул дважды.
+- **Несуществующий instrumentId в POST**: 422 с
+  `fields: {instrumentId: "not found"}`. Семантическая, не shape-валидация.
+
+### 17.5. AccountDetail composition
+
+- **Один SQL с JOIN** `positions JOIN instruments` для построения списка
+  positions с embedded `Instrument`. sqlc возвращает кастомную row
+  с префиксированными колонками (`i_id`, `i_ticker`, …).
+- **Без цен в Position**: AccountDetail возвращает позиции без price/value.
+  OpenAPI Position schema не имеет `price`. Цены и valuation — в
+  PortfolioPosition (M1.4 endpoint `/portfolio`).
+- UI логика: `/accounts/:id` показывает "AAPL × 10" без $-значений; для
+  total — переходит на dashboard `/`.
+
+### 17.6. Sentinel errors
+
+```go
+// internal/account
+var (
+    ErrNotFound         = errors.New("account: not found")
+    ErrTypeNotSupported = errors.New("account: type not supported in this version")
+)
+
+// internal/instrument
+var (
+    ErrNotFound = errors.New("instrument: not found")
+)
+
+// internal/position
+var (
+    ErrAccountNotFound    = errors.New("position: account not found")
+    ErrInstrumentNotFound = errors.New("position: instrument not found")
+    ErrAlreadyExists      = errors.New("position: already exists")
+    ErrNotFound           = errors.New("position: not found")
+)
+```
+
+Mapper в `internal/server/handlers.go`:
+- `account.ErrNotFound`, `instrument.ErrNotFound`, `position.ErrNotFound`,
+  `position.ErrAccountNotFound` → 404
+- `account.ErrTypeNotSupported`, `position.ErrInstrumentNotFound` → 422
+  с `fields`
+- `position.ErrAlreadyExists` → 409
+
+### 17.7. Транзакции в M1.3
+
+Не нужны — все операции single-statement (CREATE/UPDATE/DELETE). UPSERT
+для instruments — single SQL. POST /accounts → INSERT.
+
+Транзакции появятся в M2 при account+credentials атомарном создании.
+
+### 17.8. M1.3 acceptance
+
+1. Login (M1.2 уже есть).
+2. POST `/accounts {name: "Бумажные", type: "manual"}` → 201 + Account.
+3. POST `/instruments {ticker: "AAPL", assetClass: "us_stock", currency: "USD", name: "Apple Inc."}` → 201 + Instrument.
+4. Повторный POST с тем же payload → 200/201 с тем же `id` (idempotent).
+5. POST `/accounts/:id/positions {instrumentId, quantity: "10"}` → 201 + Position.
+6. Повторный POST → 409.
+7. PUT `/accounts/:id/positions/:instrumentId {quantity: "15"}` → 200 + Position.
+8. GET `/accounts/:id` → AccountDetail с positions=[{instrument: {ticker: "AAPL", ...}, quantity: "15"}].
+9. GET `/instruments/search?q=app` → top-20, AAPL первой строкой.
+10. DELETE `/accounts/:id/positions/:instrumentId` → 204.
+11. DELETE повторно → 404.
+12. DELETE `/accounts/:id` → 204; CASCADE удаляет оставшиеся positions.
+13. GET `/accounts/:id` чужого юзера (через раздельный токен) → 404.
+
+
