@@ -15,7 +15,9 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/config"
 	"github.com/kkulebaev/omnifolio/api/internal/crypto"
+	"github.com/kkulebaev/omnifolio/api/internal/fx"
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
+	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
@@ -78,6 +80,8 @@ func run() error {
 	accountSvc := account.NewService(queries)
 	instrumentSvc := instrument.NewService(queries)
 	positionSvc := position.NewService(queries, accountSvc, instrumentSvc)
+	fxSvc := fx.NewService(queries, log)
+	portfolioSvc := portfolio.NewService(queries, fxSvc)
 
 	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
 		Email:    cfg.BootstrapUserEmail,
@@ -96,27 +100,42 @@ func run() error {
 	}
 
 	sched := scheduler.New(log)
-	if err := sched.Register(rootCtx, scheduler.Job{
-		Name: "sessions-cleanup",
-		Spec: "0 * * * *",
-		Run: func(ctx context.Context) error {
-			n, err := authSvc.CleanupSessions(ctx)
-			if err == nil && n > 0 {
-				log.Info("sessions cleanup", "deleted", n)
-			}
-			return err
+	if err := sched.Register(rootCtx,
+		scheduler.Job{
+			Name: "sessions-cleanup",
+			Spec: "0 * * * *",
+			Run: func(ctx context.Context) error {
+				n, err := authSvc.CleanupSessions(ctx)
+				if err == nil && n > 0 {
+					log.Info("sessions cleanup", "deleted", n)
+				}
+				return err
+			},
 		},
-	}); err != nil {
+		scheduler.Job{
+			Name: "fx-refresh",
+			Spec: "0 6 * * *",
+			Run:  fxSvc.Refresh,
+		},
+	); err != nil {
 		return fmt.Errorf("scheduler: %w", err)
 	}
 	sched.Start()
 	defer sched.Stop()
+
+	// Initial FX seed (best-effort) so /portfolio works on first run.
+	go func() {
+		if err := fxSvc.Refresh(rootCtx); err != nil {
+			log.Warn("fx initial refresh failed", "err", err)
+		}
+	}()
 
 	handler, err := server.New(server.Deps{
 		Auth:       authSvc,
 		Account:    accountSvc,
 		Instrument: instrumentSvc,
 		Position:   positionSvc,
+		Portfolio:  portfolioSvc,
 		Logger:     log,
 		Secure:     cfg.IsProduction(),
 		MaxAge:     int(absoluteTimeout / time.Second),

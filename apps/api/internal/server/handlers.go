@@ -12,6 +12,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
+	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
 )
@@ -329,10 +330,78 @@ func (s *serverImpl) CreateInstrument(ctx context.Context, req oapi.CreateInstru
 	return oapi.CreateInstrument201JSONResponse(toOapiInstrument(inst)), nil
 }
 
-// ----- portfolio (M1.4 stub) -----
+// ----- portfolio -----
 
-func (s *serverImpl) GetPortfolio(_ context.Context, _ oapi.GetPortfolioRequestObject) (oapi.GetPortfolioResponseObject, error) {
-	return nil, errNotImplemented
+func (s *serverImpl) GetPortfolio(ctx context.Context, req oapi.GetPortfolioRequestObject) (oapi.GetPortfolioResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.GetPortfolio401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+
+	displayCcy := user.DisplayCurrency
+	if req.Params.Currency != nil && *req.Params.Currency != "" {
+		displayCcy = *req.Params.Currency
+	}
+
+	pf, err := s.deps.Portfolio.Compute(ctx, user.ID, displayCcy)
+	if err != nil {
+		return nil, err
+	}
+
+	return oapi.GetPortfolio200JSONResponse(toOapiPortfolio(pf)), nil
+}
+
+func toOapiPortfolio(pf portfolio.Portfolio) oapi.Portfolio {
+	pos := make([]oapi.PortfolioPosition, len(pf.Positions))
+	for i, p := range pf.Positions {
+		pp := oapi.PortfolioPosition{
+			AccountId:    p.AccountID,
+			AccountName:  p.AccountName,
+			InstrumentId: p.InstrumentID,
+			Ticker:       p.Ticker,
+			AssetClass:   oapi.AssetClass(p.AssetClass),
+			Currency:     p.Currency,
+			Quantity:     p.Quantity.String(),
+			PriceStale:   p.PriceStale,
+		}
+		if p.Price != nil {
+			s := p.Price.String()
+			pp.Price = &s
+		}
+		if p.ValueNative != nil {
+			s := p.ValueNative.String()
+			pp.ValueNative = &s
+		}
+		if p.ValueDisplay != nil {
+			s := p.ValueDisplay.String()
+			pp.ValueDisplay = &s
+		}
+		if p.PriceFetchedAt != nil {
+			t := *p.PriceFetchedAt
+			pp.PriceFetchedAt = &t
+		}
+		pos[i] = pp
+	}
+	return oapi.Portfolio{
+		Summary: oapi.PortfolioSummary{
+			DisplayCurrency: pf.Summary.DisplayCurrency,
+			GrandTotal:      pf.Summary.GrandTotal.String(),
+			ByAssetClass:    decimalMapToString(pf.Summary.ByAssetClass),
+			ByCurrency:      decimalMapToString(pf.Summary.ByCurrency),
+			ByAccount:       decimalMapToString(pf.Summary.ByAccount),
+		},
+		Positions: pos,
+	}
+}
+
+func decimalMapToString(m map[string]decimal.Decimal) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v.String()
+	}
+	return out
 }
 
 // ----- mappers -----

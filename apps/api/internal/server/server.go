@@ -14,6 +14,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
+	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
 )
@@ -23,6 +24,7 @@ type Deps struct {
 	Account    *account.Service
 	Instrument *instrument.Service
 	Position   *position.Service
+	Portfolio  *portfolio.Service
 	Logger     *slog.Logger
 	Secure     bool
 	MaxAge     int
