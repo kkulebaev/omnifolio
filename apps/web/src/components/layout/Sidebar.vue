@@ -42,14 +42,16 @@ const byAccount = computed(
 const accountsWithShare = computed(() => {
   const list = accountsQuery.data.value?.items ?? [];
   const total = grandTotal.value || 1;
-  return list.map((a: Account) => {
-    const value = Number(byAccount.value[a.id] ?? 0) || 0;
-    return {
-      id: a.id,
-      shortName: a.name.split(" · ")[0] || a.name,
-      share: value / total,
-    };
-  });
+  return list
+    .map((a: Account) => {
+      const value = Number(byAccount.value[a.id] ?? 0) || 0;
+      return {
+        id: a.id,
+        shortName: a.name.split(" · ")[0] || a.name,
+        share: value / total,
+      };
+    })
+    .sort((a, b) => b.share - a.share);
 });
 
 const userInitials = computed(() => {
