@@ -39,8 +39,9 @@ type errorResponse struct {
 	Description string `json:"description"`
 }
 
-// call performs a single Tinkoff REST RPC. Maps known error statuses to
-// source-level sentinels (ErrTokenInvalid, ErrRateLimited).
+// call performs a Tinkoff REST RPC with up to 3 attempts on transient errors
+// (5xx / network). Maps known statuses to source-level sentinels
+// (ErrTokenInvalid, ErrRateLimited).
 func (c *Client) call(ctx context.Context, token, service, method string, req, resp any) error {
 	url := fmt.Sprintf("%s.%s/%s", apiBase, service, method)
 	body, err := json.Marshal(req)
@@ -48,50 +49,67 @@ func (c *Client) call(ctx context.Context, token, service, method string, req, r
 		return fmt.Errorf("marshal req: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("new request: %w", err)
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-
-	res, err := c.http.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("http do: %w", err)
-	}
-	defer res.Body.Close()
-
-	respBody, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("read body: %w", err)
-	}
-
-	switch {
-	case res.StatusCode == http.StatusUnauthorized, res.StatusCode == http.StatusForbidden:
-		return source.ErrTokenInvalid
-	case res.StatusCode == http.StatusTooManyRequests:
-		return source.ErrRateLimited
-	case res.StatusCode >= 400:
-		var er errorResponse
-		_ = json.Unmarshal(respBody, &er)
-		msg := er.Message
-		if er.Description != "" {
-			msg = msg + ": " + er.Description
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(1<<uint(attempt-1)) * time.Second):
+			}
 		}
-		if msg == "" {
-			msg = string(respBody)
-		}
-		return fmt.Errorf("tinvest %s: HTTP %d: %s", method, res.StatusCode, msg)
-	}
 
-	if resp == nil {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("new request: %w", err)
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+token)
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Accept", "application/json")
+
+		res, err := c.http.Do(httpReq)
+		if err != nil {
+			lastErr = fmt.Errorf("http do: %w", err)
+			continue // network error → retry
+		}
+		respBody, readErr := io.ReadAll(res.Body)
+		res.Body.Close()
+		if readErr != nil {
+			lastErr = fmt.Errorf("read body: %w", readErr)
+			continue
+		}
+
+		switch {
+		case res.StatusCode == http.StatusUnauthorized, res.StatusCode == http.StatusForbidden:
+			return source.ErrTokenInvalid
+		case res.StatusCode == http.StatusTooManyRequests:
+			lastErr = source.ErrRateLimited
+			continue // retry with backoff
+		case res.StatusCode >= 500:
+			lastErr = fmt.Errorf("tinvest %s: HTTP %d", method, res.StatusCode)
+			continue // 5xx → retry
+		case res.StatusCode >= 400:
+			var er errorResponse
+			_ = json.Unmarshal(respBody, &er)
+			msg := er.Message
+			if er.Description != "" {
+				msg = msg + ": " + er.Description
+			}
+			if msg == "" {
+				msg = string(respBody)
+			}
+			return fmt.Errorf("tinvest %s: HTTP %d: %s", method, res.StatusCode, msg)
+		}
+
+		if resp == nil {
+			return nil
+		}
+		if err := json.Unmarshal(respBody, resp); err != nil {
+			return fmt.Errorf("unmarshal resp: %w", err)
+		}
 		return nil
 	}
-	if err := json.Unmarshal(respBody, resp); err != nil {
-		return fmt.Errorf("unmarshal resp: %w", err)
-	}
-	return nil
+	return lastErr
 }
 
 // Sentinel: distinguishes "not found" (e.g. instrument by FIGI) from other errors.

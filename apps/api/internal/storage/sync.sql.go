@@ -76,6 +76,37 @@ func (q *Queries) GetInstrumentByExternalID(ctx context.Context, arg GetInstrume
 	return i, err
 }
 
+const listExternalIDsForInstrument = `-- name: ListExternalIDsForInstrument :many
+SELECT source, native_id, instrument_id, created_at
+FROM instrument_external_ids
+WHERE instrument_id = $1
+`
+
+func (q *Queries) ListExternalIDsForInstrument(ctx context.Context, instrumentID uuid.UUID) ([]InstrumentExternalID, error) {
+	rows, err := q.db.Query(ctx, listExternalIDsForInstrument, instrumentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InstrumentExternalID
+	for rows.Next() {
+		var i InstrumentExternalID
+		if err := rows.Scan(
+			&i.Source,
+			&i.NativeID,
+			&i.InstrumentID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSyncableAccounts = `-- name: ListSyncableAccounts :many
 SELECT id, user_id, source_type, name, last_synced_at, last_sync_status, last_sync_error, created_at, updated_at
 FROM accounts
@@ -101,6 +132,47 @@ func (q *Queries) ListSyncableAccounts(ctx context.Context) ([]Account, error) {
 			&i.LastSyncError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserBrokerageAccounts = `-- name: ListUserBrokerageAccounts :many
+SELECT a.id, a.source_type, ac.ciphertext, ac.nonce, ac.key_version
+FROM accounts a
+JOIN account_credentials ac ON ac.account_id = a.id
+WHERE a.user_id = $1 AND a.source_type IN ('tinvest', 'bybit')
+`
+
+type ListUserBrokerageAccountsRow struct {
+	ID         uuid.UUID
+	SourceType string
+	Ciphertext []byte
+	Nonce      []byte
+	KeyVersion int32
+}
+
+func (q *Queries) ListUserBrokerageAccounts(ctx context.Context, userID uuid.UUID) ([]ListUserBrokerageAccountsRow, error) {
+	rows, err := q.db.Query(ctx, listUserBrokerageAccounts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserBrokerageAccountsRow
+	for rows.Next() {
+		var i ListUserBrokerageAccountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceType,
+			&i.Ciphertext,
+			&i.Nonce,
+			&i.KeyVersion,
 		); err != nil {
 			return nil, err
 		}

@@ -64,3 +64,14 @@ SELECT i.id, i.ticker, i.asset_class, i.currency, i.name, i.created_at, i.update
 FROM instruments i
 JOIN instrument_external_ids x ON x.instrument_id = i.id
 WHERE x.source = $1 AND x.native_id = $2;
+
+-- name: ListExternalIDsForInstrument :many
+SELECT source, native_id, instrument_id, created_at
+FROM instrument_external_ids
+WHERE instrument_id = $1;
+
+-- name: ListUserBrokerageAccounts :many
+SELECT a.id, a.source_type, ac.ciphertext, ac.nonce, ac.key_version
+FROM accounts a
+JOIN account_credentials ac ON ac.account_id = a.id
+WHERE a.user_id = $1 AND a.source_type IN ('tinvest', 'bybit');

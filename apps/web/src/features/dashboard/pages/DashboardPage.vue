@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { useGetPortfolio } from "@/api/generated";
 import { useUiStore } from "@/stores/ui";
-import { formatCurrency, formatQuantity } from "@/lib/formatters";
+import { formatCurrency, formatQuantity, formatRelative, priceAgeColor } from "@/lib/formatters";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 
@@ -92,6 +92,7 @@ const topAssetClass = computed(() => {
                 <TableHead>Аккаунт</TableHead>
                 <TableHead class="text-right">Количество</TableHead>
                 <TableHead class="text-right">Цена</TableHead>
+                <TableHead class="text-right">Обновлена</TableHead>
                 <TableHead class="text-right">Стоимость</TableHead>
               </TableRow>
             </TableHeader>
@@ -104,6 +105,11 @@ const topAssetClass = computed(() => {
                 <TableCell class="text-right">
                   <span v-if="p.price">{{ formatCurrency(p.price, p.currency) }}</span>
                   <span v-else class="opacity-50">—</span>
+                </TableCell>
+                <TableCell class="text-right text-xs">
+                  <span :class="priceAgeColor(p.priceFetchedAt, p.priceStale)">
+                    {{ p.priceFetchedAt ? formatRelative(p.priceFetchedAt) : "—" }}
+                  </span>
                 </TableCell>
                 <TableCell class="text-right">
                   <span v-if="p.valueDisplay">

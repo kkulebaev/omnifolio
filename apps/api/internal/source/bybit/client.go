@@ -34,38 +34,36 @@ func NewClient() *Client {
 	return &Client{http: &http.Client{Timeout: httpTimeout}}
 }
 
-// signedGet performs an authenticated GET. Bybit V5 signing scheme:
-//
-//	signature = HMAC_SHA256(apiSecret, timestamp + apiKey + recvWindow + queryString)
-//
-// where queryString is the raw URL-encoded query (without leading '?'), or the
-// JSON body for POSTs.
+// signedGet performs an authenticated GET with up to 3 attempts on transient
+// errors. Re-signs each attempt to keep the timestamp inside recvWindow.
 func (c *Client) signedGet(ctx context.Context, creds Credentials, path string, params url.Values, resp any) error {
 	queryString := ""
 	if params != nil {
 		queryString = params.Encode()
 	}
-	timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	payload := timestamp + creds.APIKey + recvWindow + queryString
-	mac := hmac.New(sha256.New, []byte(creds.APISecret))
-	mac.Write([]byte(payload))
-	sig := hex.EncodeToString(mac.Sum(nil))
-
 	urlStr := apiBase + path
 	if queryString != "" {
 		urlStr += "?" + queryString
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
-	if err != nil {
-		return fmt.Errorf("new request: %w", err)
-	}
-	req.Header.Set("X-BAPI-API-KEY", creds.APIKey)
-	req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
-	req.Header.Set("X-BAPI-RECV-WINDOW", recvWindow)
-	req.Header.Set("X-BAPI-SIGN", sig)
-	req.Header.Set("Accept", "application/json")
 
-	return c.do(req, resp)
+	return c.withRetry(ctx, func() (*http.Request, error) {
+		timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+		payload := timestamp + creds.APIKey + recvWindow + queryString
+		mac := hmac.New(sha256.New, []byte(creds.APISecret))
+		mac.Write([]byte(payload))
+		sig := hex.EncodeToString(mac.Sum(nil))
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+		if err != nil {
+			return nil, fmt.Errorf("new request: %w", err)
+		}
+		req.Header.Set("X-BAPI-API-KEY", creds.APIKey)
+		req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
+		req.Header.Set("X-BAPI-RECV-WINDOW", recvWindow)
+		req.Header.Set("X-BAPI-SIGN", sig)
+		req.Header.Set("Accept", "application/json")
+		return req, nil
+	}, resp)
 }
 
 // publicGet — for endpoints that don't need signature (e.g. /v5/market/tickers).
@@ -77,12 +75,43 @@ func (c *Client) publicGet(ctx context.Context, path string, params url.Values, 
 			urlStr += "?" + q
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
-	if err != nil {
-		return fmt.Errorf("new request: %w", err)
+	return c.withRetry(ctx, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+		if err != nil {
+			return nil, fmt.Errorf("new request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		return req, nil
+	}, resp)
+}
+
+// withRetry runs build+do up to 3 times; backs off on 5xx / network. Auth
+// errors fail-fast.
+func (c *Client) withRetry(ctx context.Context, build func() (*http.Request, error), resp any) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(1<<uint(attempt-1)) * time.Second):
+			}
+		}
+		req, err := build()
+		if err != nil {
+			return err
+		}
+		err = c.do(req, resp)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if errors.Is(err, source.ErrTokenInvalid) {
+			return err
+		}
+		// Retry on rate-limit and unspecified errors; bail on definitive ones.
 	}
-	req.Header.Set("Accept", "application/json")
-	return c.do(req, resp)
+	return lastErr
 }
 
 func (c *Client) do(req *http.Request, resp any) error {

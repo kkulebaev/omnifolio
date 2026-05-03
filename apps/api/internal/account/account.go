@@ -244,6 +244,35 @@ func (s *Service) Delete(ctx context.Context, userID, accountID uuid.UUID) error
 	return nil
 }
 
+type ActiveCreds struct {
+	AccountID  uuid.UUID
+	SourceType string
+	Plain      []byte
+}
+
+// LoadActiveBrokerageCreds returns decrypted credentials for all brokerage
+// accounts owned by user. Used by pricecache to pick a valid token for cross-source
+// price refresh.
+func (s *Service) LoadActiveBrokerageCreds(ctx context.Context, userID uuid.UUID) ([]ActiveCreds, error) {
+	rows, err := s.q.ListUserBrokerageAccounts(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list brokerage accounts: %w", err)
+	}
+	out := make([]ActiveCreds, 0, len(rows))
+	for _, row := range rows {
+		plain, err := s.enc.Decrypt(row.Ciphertext, row.Nonce, row.ID[:])
+		if err != nil {
+			continue
+		}
+		out = append(out, ActiveCreds{
+			AccountID:  row.ID,
+			SourceType: row.SourceType,
+			Plain:      plain,
+		})
+	}
+	return out, nil
+}
+
 func toAccount(row storage.Account) Account {
 	a := Account{
 		ID:             row.ID,

@@ -33,3 +33,27 @@ export function formatDate(d: Date | string): string {
     timeStyle: "short",
   }).format(date);
 }
+
+const rtf = new Intl.RelativeTimeFormat("ru-RU", { numeric: "auto" });
+
+export function formatRelative(d: Date | string | null | undefined): string {
+  if (!d) return "—";
+  const date = typeof d === "string" ? new Date(d) : d;
+  const diffSec = Math.round((date.getTime() - Date.now()) / 1000);
+  const abs = Math.abs(diffSec);
+  if (abs < 60) return rtf.format(diffSec, "second");
+  if (abs < 3600) return rtf.format(Math.round(diffSec / 60), "minute");
+  if (abs < 86400) return rtf.format(Math.round(diffSec / 3600), "hour");
+  return rtf.format(Math.round(diffSec / 86400), "day");
+}
+
+// priceAgeColor returns Tailwind text color class based on how old a price is.
+// fresh (<5min) green, ok (<30min) default, stale (<2h) orange, expired red.
+export function priceAgeColor(d: Date | string | null | undefined, isStale = false): string {
+  if (!d || isStale) return "text-red-600";
+  const ageSec = Math.abs(Date.now() - new Date(d).getTime()) / 1000;
+  if (ageSec < 300) return "text-green-600";
+  if (ageSec < 1800) return "";
+  if (ageSec < 7200) return "text-orange-500";
+  return "text-red-600";
+}

@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/config"
@@ -19,6 +21,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
+	"github.com/kkulebaev/omnifolio/api/internal/pricecache"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
 	"github.com/kkulebaev/omnifolio/api/internal/source"
@@ -97,6 +100,8 @@ func run() error {
 	portfolioSvc := portfolio.NewService(queries, fxSvc)
 	syncerSvc := syncer.NewService(pool, encryptor, registry, log)
 
+	priceCache := pricecache.New(queries, registry, credsLoaderAdapter{accountSvc}, log)
+
 	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
 		Email:    cfg.BootstrapUserEmail,
 		Password: cfg.BootstrapUserPassword,
@@ -156,6 +161,7 @@ func run() error {
 		Position:   positionSvc,
 		Portfolio:  portfolioSvc,
 		Syncer:     syncerSvc,
+		PriceCache: priceCache,
 		Logger:     log,
 		Secure:     cfg.IsProduction(),
 		MaxAge:     int(absoluteTimeout / time.Second),
@@ -188,6 +194,21 @@ func run() error {
 	}
 	log.Info("bye")
 	return nil
+}
+
+// credsLoaderAdapter adapts account.Service.LoadActiveBrokerageCreds to pricecache.CredsLoader.
+type credsLoaderAdapter struct{ s *account.Service }
+
+func (a credsLoaderAdapter) LoadActive(ctx context.Context, userID uuid.UUID) ([]pricecache.AccountCreds, error) {
+	rows, err := a.s.LoadActiveBrokerageCreds(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]pricecache.AccountCreds, len(rows))
+	for i, r := range rows {
+		out[i] = pricecache.AccountCreds{AccountID: r.AccountID, SourceType: r.SourceType, Plain: r.Plain}
+	}
+	return out, nil
 }
 
 func newLogger(level string) *slog.Logger {
