@@ -29,6 +29,7 @@ services:
       ENV: dev
       DATABASE_URL: postgres://omnifolio:omnifolio@postgres:5432/omnifolio?sslmode=disable
       MASTER_KEY: AeDDfaoPcK181EBXGp3ciFOmuXtcj7ts0LnHP3OphgM
+      ADMIN_API_KEY: dev-admin-key
       LOG_LEVEL: debug
       BOOTSTRAP_USER_EMAIL: dev@local.test
       BOOTSTRAP_USER_PASSWORD: devpassword12345
@@ -40,6 +41,19 @@ services:
       - ./api:/workspace/api:ro
       - go_modules:/go/pkg/mod
       - go_build:/root/.cache/go-build
+
+  cron:
+    build:
+      context: .
+      dockerfile: apps/cron/Dockerfile
+    profiles: ["cron"]
+    environment:
+      API_URL: http://api:8080
+      ADMIN_API_KEY: dev-admin-key
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+    depends_on:
+      api:
+        condition: service_started
 
 volumes:
   postgres_data:

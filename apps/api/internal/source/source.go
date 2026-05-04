@@ -6,7 +6,6 @@ package source
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -47,14 +46,6 @@ type ResolvedInstrument struct {
 	Currency           string
 }
 
-// Price is a per-instrument quote. Currency is the native instrument currency
-// (e.g. USD for AAPL); the caller converts to display currency separately.
-type Price struct {
-	Amount    decimal.Decimal
-	Currency  string
-	FetchedAt time.Time
-}
-
 // SubAccount is a child of a broker user (T-Invest's БРОКЕР / ИИС / ПРЕМИУМ).
 // One Omnifolio account maps to exactly one SubAccount.
 type SubAccount struct {
@@ -77,28 +68,16 @@ type PositionSource interface {
 	ResolveInstrument(ctx context.Context, creds []byte, nativeID string) (InstrumentSeed, error)
 }
 
-// PriceProvider returns latest prices for a batch of resolved instruments.
-type PriceProvider interface {
-	GetPrices(ctx context.Context, creds []byte, instruments []ResolvedInstrument) (map[uuid.UUID]Price, error)
-}
-
-// Registry wires sources into the rest of the app. There are two flavors of
-// price provider:
-//   - Prices: paired with a broker source_type, called with that broker's creds
-//     and the instrument's source-native id (e.g. FIGI for T-Invest).
-//   - PricesByAssetClass: standalone price feeds (e.g. Finnhub for US stocks)
-//     that don't require user credentials and key off asset_class instead.
+// Registry wires sources into the rest of the app. Prices are refreshed by an
+// external cron service (apps/cron) that calls /admin/prices, so the api itself
+// only needs to know how to fetch positions.
 type Registry struct {
-	Positions          map[string]PositionSource // key: account.source_type
-	Prices             map[string]PriceProvider  // key: account.source_type
-	PricesByAssetClass map[string]PriceProvider  // key: instrument.asset_class
+	Positions map[string]PositionSource // key: account.source_type
 }
 
 // NewRegistry returns a registry with all maps initialized.
 func NewRegistry() *Registry {
 	return &Registry{
-		Positions:          make(map[string]PositionSource),
-		Prices:             make(map[string]PriceProvider),
-		PricesByAssetClass: make(map[string]PriceProvider),
+		Positions: make(map[string]PositionSource),
 	}
 }

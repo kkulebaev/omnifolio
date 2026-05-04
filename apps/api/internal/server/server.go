@@ -16,22 +16,23 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
-	"github.com/kkulebaev/omnifolio/api/internal/pricecache"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
+	"github.com/kkulebaev/omnifolio/api/internal/storage"
 	"github.com/kkulebaev/omnifolio/api/internal/syncer"
 )
 
 type Deps struct {
-	Auth       *auth.Service
-	Account    *account.Service
-	Instrument *instrument.Service
-	Position   *position.Service
-	Portfolio  *portfolio.Service
-	Syncer     *syncer.Service
-	PriceCache *pricecache.Cache
-	Logger     *slog.Logger
-	Secure     bool
-	MaxAge     int
+	Auth        *auth.Service
+	Account     *account.Service
+	Instrument  *instrument.Service
+	Position    *position.Service
+	Portfolio   *portfolio.Service
+	Syncer      *syncer.Service
+	Queries     *storage.Queries
+	AdminAPIKey string
+	Logger      *slog.Logger
+	Secure      bool
+	MaxAge      int
 }
 
 func New(d Deps) (http.Handler, error) {
@@ -53,12 +54,24 @@ func New(d Deps) (http.Handler, error) {
 	r.Use(requestLogger(d.Logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
-	r.Use(oapimw.OapiRequestValidatorWithOptions(spec, &oapimw.Options{
-		Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc},
-	}))
-	r.Use(auth.Middleware(d.Auth))
 
-	oapi.HandlerFromMux(strictHandler, r)
+	// /admin/* is service-to-service: bearer-token auth, no OpenAPI validation.
+	admin := &adminHandlers{deps: d}
+	r.Route("/admin", func(rt chi.Router) {
+		rt.Use(auth.RequireAdmin(d.AdminAPIKey))
+		rt.Get("/instruments", admin.listInstruments)
+		rt.Post("/prices", admin.upsertPrices)
+	})
+
+	// User-facing API: OpenAPI validation + session middleware.
+	r.Group(func(api chi.Router) {
+		api.Use(oapimw.OapiRequestValidatorWithOptions(spec, &oapimw.Options{
+			Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc},
+		}))
+		api.Use(auth.Middleware(d.Auth))
+		oapi.HandlerFromMux(strictHandler, api)
+	})
+
 	return r, nil
 }
 

@@ -65,6 +65,27 @@ func CookieFromContext(ctx context.Context) (string, bool) {
 	return v, ok
 }
 
+// RequireAdmin gates routes behind a fixed bearer token (ADMIN_API_KEY).
+// Used for service-to-service calls (e.g. the daily price-refresh cron).
+func RequireAdmin(key string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if key == "" {
+				http.Error(w, `{"title":"Admin disabled","status":503}`, http.StatusServiceUnavailable)
+				return
+			}
+			const prefix = "Bearer "
+			h := r.Header.Get("Authorization")
+			if len(h) <= len(prefix) || h[:len(prefix)] != prefix || h[len(prefix):] != key {
+				w.Header().Set("Content-Type", "application/problem+json")
+				http.Error(w, `{"title":"Unauthorized","status":401,"type":"/errors/unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // SetCookie writes the session cookie to the response.
 func SetCookie(w http.ResponseWriter, token string, maxAge int, secure bool) {
 	http.SetCookie(w, &http.Cookie{

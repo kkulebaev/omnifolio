@@ -1,6 +1,7 @@
-// Package syncer orchestrates a full position+price sync for a brokerage account:
-// fetch positions from source.PositionSource, resolve unknown instruments,
-// upsert positions and prices, update account.last_sync_status.
+// Package syncer orchestrates a position sync for a brokerage account: fetch
+// positions from source.PositionSource, resolve unknown instruments, upsert
+// positions, update account.last_sync_status. Prices are not touched here —
+// they are refreshed by the apps/cron service through the admin API.
 package syncer
 
 import (
@@ -92,13 +93,6 @@ func (s *Service) Sync(ctx context.Context, accountID uuid.UUID) error {
 
 	if err := s.applyPositions(ctx, accountID, resolved); err != nil {
 		return s.markFailed(ctx, accountID, fmt.Errorf("apply positions: %w", err))
-	}
-
-	// Prices — fetched after positions to keep sync logic resilient (price errors
-	// shouldn't blow away a successful position sync).
-	if err := s.fetchAndStorePrices(ctx, creds, acc.SourceType, resolved); err != nil {
-		s.log.Warn("syncer: price fetch failed (positions still applied)",
-			"account_id", accountID, "err", err)
 	}
 
 	now := time.Now()
@@ -258,41 +252,6 @@ func (s *Service) applyPositions(ctx context.Context, accountID uuid.UUID, resol
 		return fmt.Errorf("delete orphans: %w", err)
 	}
 	return tx.Commit(ctx)
-}
-
-// fetchAndStorePrices runs after positions are applied. Errors are logged but
-// don't fail the sync (Q19.3: positions take priority over prices).
-func (s *Service) fetchAndStorePrices(
-	ctx context.Context, creds []byte, sourceType string, resolved []resolvedPosition,
-) error {
-	provider, ok := s.registry.Prices[sourceType]
-	if !ok {
-		// Some sources (e.g. manual) don't have a price provider — skip.
-		return nil
-	}
-	if len(resolved) == 0 {
-		return nil
-	}
-	insts := make([]source.ResolvedInstrument, 0, len(resolved))
-	for _, r := range resolved {
-		if r.Instrument.AssetClass == "cash" {
-			continue
-		}
-		insts = append(insts, r.Instrument)
-	}
-	prices, err := provider.GetPrices(ctx, creds, insts)
-	if err != nil {
-		return fmt.Errorf("get prices: %w", err)
-	}
-	for id, p := range prices {
-		if err := s.q.UpsertPrice(ctx, storage.UpsertPriceParams{
-			InstrumentID: id,
-			Price:        p.Amount,
-		}); err != nil {
-			s.log.Warn("syncer: upsert price failed", "instrument_id", id, "err", err)
-		}
-	}
-	return nil
 }
 
 // markFailed records the failure reason on the account row.

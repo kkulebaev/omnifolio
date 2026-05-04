@@ -28,12 +28,14 @@ The web app proxies `/api/*` to `localhost:8080`. Bootstrap user is created from
 `main` branch auto-deploys to Railway via GitHub integration:
 - `apps/api/**` and `api/**` changes rebuild the **api** service.
 - `apps/web/**`, `api/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json` changes rebuild the **web** service.
+- `apps/cron/**` changes rebuild the **cron** service.
 
 Env vars required per service (set via Railway dashboard or `railway variables`):
 
 **api**
 - `DATABASE_URL` — Postgres connection string (auto-injected from `Postgres` service if you reference it)
 - `MASTER_KEY` — 32 bytes base64url, used for AES-GCM credential encryption
+- `ADMIN_API_KEY` — shared secret for service-to-service `/admin/*` calls (used by the **cron** service)
 - `BOOTSTRAP_USER_EMAIL`, `BOOTSTRAP_USER_PASSWORD` — first user to seed if `users` table is empty
 - `ENV=prod`, `LOG_LEVEL=info`
 - `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`
@@ -42,6 +44,12 @@ Env vars required per service (set via Railway dashboard or `railway variables`)
 - `API_INTERNAL_URL=http://api.railway.internal:8080`
 - `RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile`
 
+**cron** — daily price refresh, runs once per invocation and exits. Configure as a Railway cron service with schedule `0 6 * * *` (06:00 UTC ≈ 09:00 МСК).
+- `API_URL=http://api.railway.internal:8080`
+- `ADMIN_API_KEY` — same value as set on the **api** service
+- `FINNHUB_API_KEY` — quote provider for `us_stock` / `us_etf` instruments (optional; if unset, those classes aren't refreshed)
+- `RAILWAY_DOCKERFILE_PATH=apps/cron/Dockerfile`
+
 **postgres** — managed plugin, no manual config.
 
 ## Generating MASTER_KEY
@@ -49,6 +57,16 @@ Env vars required per service (set via Railway dashboard or `railway variables`)
 ```sh
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
+
+## Cron service (price refresh)
+
+`apps/cron` is a one-shot Go binary that pulls quotes from external providers (Finnhub for US stocks/ETFs) and writes them via the api's `/admin/prices` endpoint. It does not talk to the DB directly. Trigger manually in dev:
+
+```sh
+docker compose --profile cron run --rm -e FINNHUB_API_KEY=$FINNHUB_API_KEY cron
+```
+
+Broker-bound prices are not the cron's job — Bybit and T-Invest positions are still synced hourly by the api's in-process `sync-brokerage-accounts` job, but that job no longer touches the `prices` table.
 
 ## Codegen
 

@@ -1,4 +1,4 @@
-// Package bybit implements PositionSource and PriceProvider for Bybit V5 REST API.
+// Package bybit implements PositionSource for Bybit V5 REST API.
 // Auth: HMAC-SHA256 signature in X-BAPI-SIGN header. We hand-roll signing rather
 // than pull a third-party SDK.
 package bybit
@@ -61,25 +61,6 @@ func (c *Client) signedGet(ctx context.Context, creds Credentials, path string, 
 		req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
 		req.Header.Set("X-BAPI-RECV-WINDOW", recvWindow)
 		req.Header.Set("X-BAPI-SIGN", sig)
-		req.Header.Set("Accept", "application/json")
-		return req, nil
-	}, resp)
-}
-
-// publicGet — for endpoints that don't need signature (e.g. /v5/market/tickers).
-func (c *Client) publicGet(ctx context.Context, path string, params url.Values, resp any) error {
-	urlStr := apiBase + path
-	if params != nil {
-		q := params.Encode()
-		if q != "" {
-			urlStr += "?" + q
-		}
-	}
-	return c.withRetry(ctx, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new request: %w", err)
-		}
 		req.Header.Set("Accept", "application/json")
 		return req, nil
 	}, resp)

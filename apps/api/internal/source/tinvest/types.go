@@ -44,23 +44,6 @@ type apiPosition struct {
 	PositionUID           string     `json:"positionUid"`
 }
 
-// --- MarketDataService.GetLastPrices ---
-
-type getLastPricesRequest struct {
-	FIGI []string `json:"figi"`
-}
-
-type getLastPricesResponse struct {
-	LastPrices []apiLastPrice `json:"lastPrices"`
-}
-
-type apiLastPrice struct {
-	FIGI          string    `json:"figi"`
-	Price         Quotation `json:"price"`
-	Time          string    `json:"time"`
-	InstrumentUID string    `json:"instrumentUid"`
-}
-
 // --- InstrumentsService.GetInstrumentBy ---
 
 type getInstrumentByRequest struct {

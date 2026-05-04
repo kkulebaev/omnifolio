@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/config"
@@ -21,12 +19,10 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
-	"github.com/kkulebaev/omnifolio/api/internal/pricecache"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
 	"github.com/kkulebaev/omnifolio/api/internal/source"
 	"github.com/kkulebaev/omnifolio/api/internal/source/bybit"
-	"github.com/kkulebaev/omnifolio/api/internal/source/finnhub"
 	"github.com/kkulebaev/omnifolio/api/internal/source/tinvest"
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
 	"github.com/kkulebaev/omnifolio/api/internal/syncer"
@@ -84,23 +80,10 @@ func run() error {
 
 	queries := storage.New(pool)
 
-	// Source registry (PositionSource per source_type, PriceProvider per source_type).
+	// Source registry (positions only — prices are refreshed by apps/cron).
 	registry := source.NewRegistry()
-	tinvestClient := tinvest.NewClient()
-	registry.Positions[account.TypeTInvest] = tinvest.NewPositionSource(tinvestClient)
-	registry.Prices[account.TypeTInvest] = tinvest.NewPriceProvider(tinvestClient)
-	bybitClient := bybit.NewClient()
-	registry.Positions[account.TypeBybit] = bybit.NewPositionSource(bybitClient)
-	registry.Prices[account.TypeBybit] = bybit.NewPriceProvider(bybitClient)
-
-	if cfg.FinnhubAPIKey != "" {
-		finnhubProvider := finnhub.NewPriceProvider(finnhub.NewClient(cfg.FinnhubAPIKey))
-		registry.PricesByAssetClass["us_stock"] = finnhubProvider
-		registry.PricesByAssetClass["us_etf"] = finnhubProvider
-		log.Info("finnhub: registered for us_stock, us_etf")
-	} else {
-		log.Warn("FINNHUB_API_KEY not set; us_stock/us_etf prices will not refresh")
-	}
+	registry.Positions[account.TypeTInvest] = tinvest.NewPositionSource(tinvest.NewClient())
+	registry.Positions[account.TypeBybit] = bybit.NewPositionSource(bybit.NewClient())
 
 	authSvc := auth.NewService(queries, idleTimeout, absoluteTimeout)
 	accountSvc := account.NewService(pool, encryptor, registry)
@@ -109,8 +92,6 @@ func run() error {
 	fxSvc := fx.NewService(queries, log)
 	portfolioSvc := portfolio.NewService(queries, fxSvc)
 	syncerSvc := syncer.NewService(pool, encryptor, registry, log)
-
-	priceCache := pricecache.New(queries, registry, credsLoaderAdapter{accountSvc}, log)
 
 	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
 		Email:    cfg.BootstrapUserEmail,
@@ -165,16 +146,17 @@ func run() error {
 	}()
 
 	handler, err := server.New(server.Deps{
-		Auth:       authSvc,
-		Account:    accountSvc,
-		Instrument: instrumentSvc,
-		Position:   positionSvc,
-		Portfolio:  portfolioSvc,
-		Syncer:     syncerSvc,
-		PriceCache: priceCache,
-		Logger:     log,
-		Secure:     cfg.IsProduction(),
-		MaxAge:     int(absoluteTimeout / time.Second),
+		Auth:        authSvc,
+		Account:     accountSvc,
+		Instrument:  instrumentSvc,
+		Position:    positionSvc,
+		Portfolio:   portfolioSvc,
+		Syncer:      syncerSvc,
+		Queries:     queries,
+		AdminAPIKey: cfg.AdminAPIKey,
+		Logger:      log,
+		Secure:      cfg.IsProduction(),
+		MaxAge:      int(absoluteTimeout / time.Second),
 	})
 	if err != nil {
 		return fmt.Errorf("server: %w", err)
@@ -204,21 +186,6 @@ func run() error {
 	}
 	log.Info("bye")
 	return nil
-}
-
-// credsLoaderAdapter adapts account.Service.LoadActiveBrokerageCreds to pricecache.CredsLoader.
-type credsLoaderAdapter struct{ s *account.Service }
-
-func (a credsLoaderAdapter) LoadActive(ctx context.Context, userID uuid.UUID) ([]pricecache.AccountCreds, error) {
-	rows, err := a.s.LoadActiveBrokerageCreds(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]pricecache.AccountCreds, len(rows))
-	for i, r := range rows {
-		out[i] = pricecache.AccountCreds{AccountID: r.AccountID, SourceType: r.SourceType, Plain: r.Plain}
-	}
-	return out, nil
 }
 
 func newLogger(level string) *slog.Logger {

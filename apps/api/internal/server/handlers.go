@@ -16,7 +16,6 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
-	"github.com/kkulebaev/omnifolio/api/internal/pricecache"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
 	"github.com/kkulebaev/omnifolio/api/internal/source"
 )
@@ -500,14 +499,6 @@ func (s *serverImpl) GetPortfolio(ctx context.Context, req oapi.GetPortfolioRequ
 	pf, err := s.deps.Portfolio.Compute(ctx, user.ID, displayCcy)
 	if err != nil {
 		return nil, err
-	}
-
-	if s.deps.PriceCache != nil {
-		insts := make([]pricecache.Instrument, 0, len(pf.Positions))
-		for _, p := range pf.Positions {
-			insts = append(insts, pricecache.Instrument{ID: p.InstrumentID, AssetClass: p.AssetClass, Ticker: p.Ticker})
-		}
-		s.deps.PriceCache.RefreshStaleAsync(ctx, user.ID, insts)
 	}
 
 	return oapi.GetPortfolio200JSONResponse(toOapiPortfolio(pf)), nil

@@ -16,7 +16,7 @@ type Config struct {
 	BootstrapUserEmail    string `env:"BOOTSTRAP_USER_EMAIL"`
 	BootstrapUserPassword string `env:"BOOTSTRAP_USER_PASSWORD"`
 
-	FinnhubAPIKey string `env:"FINNHUB_API_KEY"`
+	AdminAPIKey string `env:"ADMIN_API_KEY,required"`
 
 	SessionIdleTimeout     string `env:"SESSION_IDLE_TIMEOUT" envDefault:"30m"`
 	SessionAbsoluteTimeout string `env:"SESSION_ABSOLUTE_TIMEOUT" envDefault:"720h"`

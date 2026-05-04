@@ -23,17 +23,3 @@ type walletCoin struct {
 	UsdValue      string `json:"usdValue"`
 }
 
-// --- /v5/market/tickers ---
-
-type tickersResponse struct {
-	envelope
-	Result struct {
-		Category string   `json:"category"`
-		List     []ticker `json:"list"`
-	} `json:"result"`
-}
-
-type ticker struct {
-	Symbol    string `json:"symbol"`
-	LastPrice string `json:"lastPrice"`
-}

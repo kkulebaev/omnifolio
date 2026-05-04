@@ -143,47 +143,6 @@ func (q *Queries) ListSyncableAccounts(ctx context.Context) ([]Account, error) {
 	return items, nil
 }
 
-const listUserBrokerageAccounts = `-- name: ListUserBrokerageAccounts :many
-SELECT a.id, a.source_type, ac.ciphertext, ac.nonce, ac.key_version
-FROM accounts a
-JOIN account_credentials ac ON ac.account_id = a.id
-WHERE a.user_id = $1 AND a.source_type IN ('tinvest', 'bybit')
-`
-
-type ListUserBrokerageAccountsRow struct {
-	ID         uuid.UUID
-	SourceType string
-	Ciphertext []byte
-	Nonce      []byte
-	KeyVersion int32
-}
-
-func (q *Queries) ListUserBrokerageAccounts(ctx context.Context, userID uuid.UUID) ([]ListUserBrokerageAccountsRow, error) {
-	rows, err := q.db.Query(ctx, listUserBrokerageAccounts, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListUserBrokerageAccountsRow
-	for rows.Next() {
-		var i ListUserBrokerageAccountsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.SourceType,
-			&i.Ciphertext,
-			&i.Nonce,
-			&i.KeyVersion,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const setAccountSyncStatus = `-- name: SetAccountSyncStatus :exec
 UPDATE accounts
 SET last_synced_at = COALESCE($3, last_synced_at),
