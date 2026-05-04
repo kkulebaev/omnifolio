@@ -35,11 +35,9 @@ import type {
   AccountList,
   ConflictResponse,
   CreateAccountRequest,
-  CreateInstrumentRequest,
   CreatePositionRequest,
   GetPortfolioParams,
   Health,
-  Instrument,
   InstrumentList,
   ListInstrumentsParams,
   LoginRequest,
@@ -1132,71 +1130,6 @@ export function useListInstruments<TData = Awaited<ReturnType<typeof listInstrum
 
 
 
-/**
- * @summary Create instrument manually
- */
-export const createInstrument = (
-    createInstrumentRequest: MaybeRef<CreateInstrumentRequest>,
- signal?: AbortSignal
-) => {
-      createInstrumentRequest = unref(createInstrumentRequest);
-      
-      return fetcher<Instrument>(
-      {url: `/instruments`, method: 'POST',
-      headers: {'Content-Type': 'application/json', },
-      data: createInstrumentRequest, signal
-    },
-      );
-    }
-  
-
-
-export const getCreateInstrumentMutationOptions = <TError = UnauthorizedResponse | ValidationErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInstrument>>, TError,{data: CreateInstrumentRequest}, TContext>, }
-): UseMutationOptions<Awaited<ReturnType<typeof createInstrument>>, TError,{data: CreateInstrumentRequest}, TContext> => {
-
-const mutationKey = ['createInstrument'];
-const {mutation: mutationOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }};
-
-      
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInstrument>>, {data: CreateInstrumentRequest}> = (props) => {
-          const {data} = props ?? {};
-
-          return  createInstrument(data,)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type CreateInstrumentMutationResult = NonNullable<Awaited<ReturnType<typeof createInstrument>>>
-    export type CreateInstrumentMutationBody = CreateInstrumentRequest
-    export type CreateInstrumentMutationError = UnauthorizedResponse | ValidationErrorResponse
-
-    /**
- * @summary Create instrument manually
- */
-export const useCreateInstrument = <TError = UnauthorizedResponse | ValidationErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInstrument>>, TError,{data: CreateInstrumentRequest}, TContext>, }
- , queryClient?: QueryClient): UseMutationReturnType<
-        Awaited<ReturnType<typeof createInstrument>>,
-        TError,
-        {data: CreateInstrumentRequest},
-        TContext
-      > => {
-
-      const mutationOptions = getCreateInstrumentMutationOptions(options);
-
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * @summary Aggregated portfolio across all accounts
  */

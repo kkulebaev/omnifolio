@@ -16,7 +16,6 @@ export * from './accountType';
 export * from './assetClass';
 export * from './conflictResponse';
 export * from './createAccountRequest';
-export * from './createInstrumentRequest';
 export * from './createPositionRequest';
 export * from './getPortfolioParams';
 export * from './health';

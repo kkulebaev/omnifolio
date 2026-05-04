@@ -459,28 +459,6 @@ func (s *serverImpl) ListInstruments(ctx context.Context, req oapi.ListInstrumen
 	return oapi.ListInstruments200JSONResponse{Items: items, Total: int(res.Total)}, nil
 }
 
-func (s *serverImpl) CreateInstrument(ctx context.Context, req oapi.CreateInstrumentRequestObject) (oapi.CreateInstrumentResponseObject, error) {
-	if _, ok := auth.UserFromContext(ctx); !ok {
-		return oapi.CreateInstrument401ApplicationProblemPlusJSONResponse{
-			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
-		}, nil
-	}
-	if req.Body == nil {
-		return createInstrumentValidationResp("missing body", nil), nil
-	}
-
-	inst, err := s.deps.Instrument.CreateOrGet(ctx, instrument.CreateInput{
-		Ticker:     req.Body.Ticker,
-		AssetClass: string(req.Body.AssetClass),
-		Currency:   req.Body.Currency,
-		Name:       req.Body.Name,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return oapi.CreateInstrument201JSONResponse(toOapiInstrument(inst)), nil
-}
-
 // ----- portfolio -----
 
 func (s *serverImpl) GetPortfolio(ctx context.Context, req oapi.GetPortfolioRequestObject) (oapi.GetPortfolioResponseObject, error) {
@@ -729,10 +707,6 @@ func createPositionValidationResp(title string, fields map[string]string) oapi.C
 func updatePositionValidationResp(title string, fields map[string]string) oapi.UpdatePosition422ApplicationProblemPlusJSONResponse {
 	return oapi.UpdatePosition422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
 }
-func createInstrumentValidationResp(title string, fields map[string]string) oapi.CreateInstrument422ApplicationProblemPlusJSONResponse {
-	return oapi.CreateInstrument422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
-}
-
 // ----- strict server error handlers -----
 
 func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
