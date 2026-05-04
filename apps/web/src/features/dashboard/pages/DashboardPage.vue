@@ -115,11 +115,12 @@ const merged = computed<DisplayPosition[]>(() => {
   }
   const out: DisplayPosition[] = [];
   for (const group of groups.values()) {
+    const head = group[0];
+    if (!head) continue;
     if (group.length === 1) {
-      out.push({ ...group[0], accountCount: 1, isMerged: false });
+      out.push({ ...head, accountCount: 1, isMerged: false });
       continue;
     }
-    const head = group[0];
     const qty = group.reduce((s, p) => s + Number(p.quantity ?? 0), 0);
     const valueNative = group.reduce(
       (s, p) => s + Number(p.valueNative ?? 0),
