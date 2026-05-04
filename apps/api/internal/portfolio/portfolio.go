@@ -94,7 +94,9 @@ func (s *Service) Compute(ctx context.Context, userID uuid.UUID, displayCurrency
 		if row.Price.Valid {
 			price := row.Price.Decimal
 			pos.Price = &price
-			if row.FetchedAt.Valid {
+			// Cash positions are pegged 1:1 to their currency by definition, so
+			// fetched_at has no meaning — surface it as null and never mark stale.
+			if row.FetchedAt.Valid && pos.AssetClass != "cash" {
 				t := row.FetchedAt.Time
 				pos.PriceFetchedAt = &t
 				if now.Sub(t) > priceFreshness {

@@ -594,7 +594,7 @@ func toOapiInstrument(i instrument.Instrument) oapi.Instrument {
 		s := i.CurrentPrice.String()
 		out.CurrentPrice = &s
 	}
-	if i.PriceFetchedAt != nil {
+	if i.PriceFetchedAt != nil && i.AssetClass != "cash" {
 		t := *i.PriceFetchedAt
 		out.PriceUpdatedAt = &t
 	}
