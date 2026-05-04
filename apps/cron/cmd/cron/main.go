@@ -1,8 +1,8 @@
 // Package main is the entrypoint for the price-refresh cron service. It runs
-// once per invocation: build a seed catalog (static us_* list + dynamic ru_stock
-// snapshot from T-Invest) → POST /admin/instruments → GET /admin/instruments →
-// fetch quotes from external providers → POST /admin/prices → exit.
-// Designed for Railway's cron mode.
+// once per invocation: build a seed catalog (static us_* list + dynamic
+// ru_stock snapshot from T-Invest + dynamic crypto snapshot from Bybit) →
+// POST /admin/instruments → GET /admin/instruments → fetch quotes from external
+// providers → POST /admin/prices → exit. Designed for Railway's cron mode.
 package main
 
 import (
@@ -99,6 +99,24 @@ func run(log *slog.Logger) error {
 		log.Warn("cron: TINVEST_TOKEN not set; skipping ru channel")
 	}
 
+	// Crypto universe (USDT-spot pairs from Bybit). Bybit market-data is public,
+	// no auth required. On failure we just skip the crypto channel.
+	bb := newBybitClient()
+	if cryptoInsts, err := bb.fetchUSDTSpotInstruments(ctx); err != nil {
+		log.Warn("cron: bybit instruments fetch failed; crypto channel skipped", "err", err)
+		bb = nil
+	} else {
+		log.Info("cron: bybit usdt-spot instruments fetched", "count", len(cryptoInsts))
+		for _, ins := range cryptoInsts {
+			seeds = append(seeds, seedItem{
+				Ticker:     ins.BaseCoin,
+				Name:       ins.BaseCoin,
+				Currency:   "USDT",
+				AssetClass: "crypto",
+			})
+		}
+	}
+
 	if seedResp, err := seedInstruments(ctx, cfg, seeds); err != nil {
 		return fmt.Errorf("seed instruments: %w", err)
 	} else {
@@ -139,6 +157,12 @@ func run(log *slog.Logger) error {
 		}
 		log.Info("cron: querying tinvest", "count", len(targets))
 		prices = append(prices, tin.fetchPrices(ctx, targets, log)...)
+	}
+
+	if bb != nil {
+		eligible := filterByAssetClass(insts, "crypto")
+		log.Info("cron: querying bybit", "count", len(eligible))
+		prices = append(prices, bb.fetchPrices(ctx, eligible, log)...)
 	}
 
 	if len(prices) == 0 {

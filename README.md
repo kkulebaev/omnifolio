@@ -64,10 +64,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ## Cron service (price refresh)
 
 `apps/cron` is a one-shot Go binary that on each invocation:
-1. Seeds the canonical instruments catalog: a static US list from the embedded `apps/cron/cmd/cron/instruments.json` plus, if `TINVEST_TOKEN` is set, every MOEX share (`class_code='TQBR'`) returned by T-Invest `InstrumentsService.Shares`. Both are POSTed to `/admin/instruments` (idempotent — existing rows are no-ops).
-2. Pulls quotes from external providers — Finnhub for `us_stock` / `us_etf`, T-Invest `MarketDataService.GetLastPrices` for `ru_stock` — and writes them via `POST /admin/prices`.
+1. Seeds the canonical instruments catalog from three sources: a static US list from the embedded `apps/cron/cmd/cron/instruments.json`; if `TINVEST_TOKEN` is set, every MOEX share (`class_code='TQBR'`) returned by T-Invest `InstrumentsService.Shares`; and every USDT-quoted spot pair currently trading on Bybit (`/v5/market/instruments-info`, public — stablecoins excluded). All three lists are POSTed to `/admin/instruments` (idempotent — existing rows are no-ops).
+2. Pulls quotes from external providers — Finnhub for `us_stock` / `us_etf`, T-Invest `MarketDataService.GetLastPrices` for `ru_stock`, Bybit `/v5/market/tickers` for `crypto` — and writes them via `POST /admin/prices`.
 
-It does not talk to the DB directly. To add/remove tracked US tickers, edit `apps/cron/cmd/cron/instruments.json` and redeploy the **cron** service. The Russian universe is rebuilt from T-Invest on every run, so no manual list is maintained for it. Trigger manually in dev:
+It does not talk to the DB directly. To add/remove tracked US tickers, edit `apps/cron/cmd/cron/instruments.json` and redeploy the **cron** service. The Russian and crypto universes are rebuilt from T-Invest and Bybit on every run, so no manual list is maintained for them. Trigger manually in dev:
 
 ```sh
 docker compose --profile cron run --rm \
