@@ -50,6 +50,7 @@ Env vars required per service (set via Railway dashboard or `railway variables`)
 - `API_URL=http://api.railway.internal:8080`
 - `ADMIN_API_KEY` — same value as set on the **api** service
 - `FINNHUB_API_KEY` — quote provider for `us_stock` / `us_etf` instruments (optional; if unset, those classes aren't refreshed)
+- `TINVEST_TOKEN` — read-only invest token; quote provider for `ru_stock`, also drives the MOEX share catalog snapshot (optional; if unset, the ru channel is skipped entirely)
 - `RAILWAY_DOCKERFILE_PATH=apps/cron/Dockerfile`
 
 **postgres** — managed plugin, no manual config.
@@ -63,13 +64,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ## Cron service (price refresh)
 
 `apps/cron` is a one-shot Go binary that on each invocation:
-1. Seeds the canonical instruments catalog from the embedded `apps/cron/cmd/cron/instruments.json` via `POST /admin/instruments` (idempotent — existing rows are no-ops).
-2. Pulls quotes from external providers (Finnhub for `us_stock` / `us_etf`) and writes them via `POST /admin/prices`.
+1. Seeds the canonical instruments catalog: a static US list from the embedded `apps/cron/cmd/cron/instruments.json` plus, if `TINVEST_TOKEN` is set, every MOEX share (`class_code='TQBR'`) returned by T-Invest `InstrumentsService.Shares`. Both are POSTed to `/admin/instruments` (idempotent — existing rows are no-ops).
+2. Pulls quotes from external providers — Finnhub for `us_stock` / `us_etf`, T-Invest `MarketDataService.GetLastPrices` for `ru_stock` — and writes them via `POST /admin/prices`.
 
-It does not talk to the DB directly. To add/remove tracked US tickers, edit `apps/cron/cmd/cron/instruments.json` and redeploy the **cron** service. Trigger manually in dev:
+It does not talk to the DB directly. To add/remove tracked US tickers, edit `apps/cron/cmd/cron/instruments.json` and redeploy the **cron** service. The Russian universe is rebuilt from T-Invest on every run, so no manual list is maintained for it. Trigger manually in dev:
 
 ```sh
-docker compose --profile cron run --rm -e FINNHUB_API_KEY=$FINNHUB_API_KEY cron
+docker compose --profile cron run --rm \
+  -e FINNHUB_API_KEY=$FINNHUB_API_KEY \
+  -e TINVEST_TOKEN=$TINVEST_TOKEN \
+  cron
 ```
 
 Broker-bound prices are not the cron's job — Bybit and T-Invest positions are still synced hourly by the api's in-process `sync-brokerage-accounts` job, but that job no longer touches the `prices` table.

@@ -1,7 +1,8 @@
 // Package main is the entrypoint for the price-refresh cron service. It runs
-// once per invocation: seed the canonical catalog from instruments.json →
-// GET /admin/instruments → fetch quotes from external providers →
-// POST /admin/prices → exit. Designed for Railway's cron mode.
+// once per invocation: build a seed catalog (static us_* list + dynamic ru_stock
+// snapshot from T-Invest) → POST /admin/instruments → GET /admin/instruments →
+// fetch quotes from external providers → POST /admin/prices → exit.
+// Designed for Railway's cron mode.
 package main
 
 import (
@@ -12,10 +13,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,17 +23,13 @@ import (
 //go:embed instruments.json
 var seedJSON []byte
 
-const (
-	httpTimeout      = 15 * time.Second
-	finnhubAPIBase   = "https://finnhub.io/api/v1"
-	finnhubMaxConcur = 8
-	finnhubRetries   = 3
-)
+const httpTimeout = 15 * time.Second
 
 type config struct {
 	APIURL        string
 	AdminAPIKey   string
 	FinnhubAPIKey string
+	TInvestToken  string
 }
 
 func loadConfig() (config, error) {
@@ -42,6 +37,7 @@ func loadConfig() (config, error) {
 		APIURL:        strings.TrimRight(os.Getenv("API_URL"), "/"),
 		AdminAPIKey:   os.Getenv("ADMIN_API_KEY"),
 		FinnhubAPIKey: os.Getenv("FINNHUB_API_KEY"),
+		TInvestToken:  os.Getenv("TINVEST_TOKEN"),
 	}
 	if cfg.APIURL == "" {
 		return cfg, fmt.Errorf("API_URL is required")
@@ -70,7 +66,40 @@ func run(log *slog.Logger) error {
 
 	log.Info("cron: start", "api_url", cfg.APIURL)
 
-	if seedResp, err := seedInstruments(ctx, cfg); err != nil {
+	seeds, err := loadStaticSeed()
+	if err != nil {
+		return fmt.Errorf("load static seed: %w", err)
+	}
+
+	// RU shares are discovered at runtime: ask T-Invest for the MOEX universe,
+	// then seed each share. We keep ticker→figi locally for the price step.
+	figiByTicker := map[string]string{}
+	if cfg.TInvestToken != "" {
+		tin := newTinvestClient(cfg.TInvestToken)
+		shares, err := tin.fetchMoexShares(ctx)
+		if err != nil {
+			log.Warn("cron: tinvest shares fetch failed; ru channel skipped", "err", err)
+		} else {
+			log.Info("cron: tinvest moex shares fetched", "count", len(shares))
+			for _, s := range shares {
+				ticker := strings.ToUpper(strings.TrimSpace(s.Ticker))
+				if ticker == "" {
+					continue
+				}
+				figiByTicker[ticker] = s.FIGI
+				seeds = append(seeds, seedItem{
+					Ticker:     ticker,
+					Name:       s.Name,
+					Currency:   strings.ToUpper(s.Currency),
+					AssetClass: "ru_stock",
+				})
+			}
+		}
+	} else {
+		log.Warn("cron: TINVEST_TOKEN not set; skipping ru channel")
+	}
+
+	if seedResp, err := seedInstruments(ctx, cfg, seeds); err != nil {
 		return fmt.Errorf("seed instruments: %w", err)
 	} else {
 		log.Info("cron: catalog seeded",
@@ -92,10 +121,24 @@ func run(log *slog.Logger) error {
 		fh := newFinnhubClient(cfg.FinnhubAPIKey)
 		eligible := filterByAssetClass(insts, "us_stock", "us_etf")
 		log.Info("cron: querying finnhub", "count", len(eligible))
-		got := fh.fetchAll(ctx, eligible, log)
-		prices = append(prices, got...)
+		prices = append(prices, fh.fetchAll(ctx, eligible, log)...)
 	} else {
 		log.Warn("cron: FINNHUB_API_KEY not set; skipping us_stock/us_etf")
+	}
+
+	if cfg.TInvestToken != "" && len(figiByTicker) > 0 {
+		tin := newTinvestClient(cfg.TInvestToken)
+		eligible := filterByAssetClass(insts, "ru_stock")
+		targets := make([]ruPriceTarget, 0, len(eligible))
+		for _, i := range eligible {
+			figi, ok := figiByTicker[strings.ToUpper(i.Ticker)]
+			if !ok {
+				continue
+			}
+			targets = append(targets, ruPriceTarget{InstrumentID: i.ID, FIGI: figi})
+		}
+		log.Info("cron: querying tinvest", "count", len(targets))
+		prices = append(prices, tin.fetchPrices(ctx, targets, log)...)
 	}
 
 	if len(prices) == 0 {
@@ -116,7 +159,24 @@ func run(log *slog.Logger) error {
 	return nil
 }
 
-// ---------- API client ----------
+// ---------- Seed ----------
+
+type seedItem struct {
+	Ticker     string `json:"ticker"`
+	Name       string `json:"name"`
+	Currency   string `json:"currency"`
+	AssetClass string `json:"assetClass"`
+}
+
+func loadStaticSeed() ([]seedItem, error) {
+	var items []seedItem
+	if err := json.Unmarshal(seedJSON, &items); err != nil {
+		return nil, fmt.Errorf("parse instruments.json: %w", err)
+	}
+	return items, nil
+}
+
+// ---------- Admin API client ----------
 
 type instrumentItem struct {
 	ID         uuid.UUID `json:"id"`
@@ -135,6 +195,12 @@ type priceItem struct {
 	Price        string    `json:"price"`
 }
 
+type seedResponse struct {
+	Processed int      `json:"processed"`
+	Failed    int      `json:"failed"`
+	Errors    []string `json:"errors,omitempty"`
+}
+
 type upsertResponse struct {
 	Updated  int      `json:"updated"`
 	Failed   int      `json:"failed"`
@@ -146,27 +212,10 @@ func adminClient() *http.Client {
 	return &http.Client{Timeout: httpTimeout}
 }
 
-type seedItem struct {
-	Ticker     string `json:"ticker"`
-	Name       string `json:"name"`
-	Currency   string `json:"currency"`
-	AssetClass string `json:"assetClass"`
-}
-
-type seedResponse struct {
-	Processed int      `json:"processed"`
-	Failed    int      `json:"failed"`
-	Errors    []string `json:"errors,omitempty"`
-}
-
-// seedInstruments idempotently registers every entry from instruments.json
-// in the canonical catalog. CreateOrGet on the api side ensures duplicates
-// are no-ops, so it's safe to run on every invocation.
-func seedInstruments(ctx context.Context, cfg config) (seedResponse, error) {
-	var items []seedItem
-	if err := json.Unmarshal(seedJSON, &items); err != nil {
-		return seedResponse{}, fmt.Errorf("parse instruments.json: %w", err)
-	}
+// seedInstruments idempotently registers every entry from the seed list in
+// the canonical catalog. CreateOrGet on the api side ensures duplicates are
+// no-ops, so it's safe to run on every invocation.
+func seedInstruments(ctx context.Context, cfg config, items []seedItem) (seedResponse, error) {
 	if len(items) == 0 {
 		return seedResponse{}, nil
 	}
@@ -255,124 +304,4 @@ func filterByAssetClass(insts []instrumentItem, classes ...string) []instrumentI
 		}
 	}
 	return out
-}
-
-// ---------- Finnhub ----------
-
-type finnhubClient struct {
-	apiKey string
-	http   *http.Client
-}
-
-func newFinnhubClient(apiKey string) *finnhubClient {
-	return &finnhubClient{apiKey: apiKey, http: &http.Client{Timeout: httpTimeout}}
-}
-
-type finnhubQuote struct {
-	C float64 `json:"c"` // current price; 0 means symbol unknown
-	T int64   `json:"t"` // unix timestamp (seconds)
-}
-
-func (f *finnhubClient) fetchAll(ctx context.Context, insts []instrumentItem, log *slog.Logger) []priceItem {
-	out := make([]priceItem, 0, len(insts))
-	if len(insts) == 0 {
-		return out
-	}
-	var (
-		mu  sync.Mutex
-		wg  sync.WaitGroup
-		sem = make(chan struct{}, finnhubMaxConcur)
-	)
-	for _, inst := range insts {
-		symbol := strings.ToUpper(strings.TrimSpace(inst.Ticker))
-		if symbol == "" {
-			continue
-		}
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(inst instrumentItem, symbol string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			q, err := f.quote(ctx, symbol)
-			if err != nil {
-				log.Warn("finnhub: quote failed", "symbol", symbol, "err", err)
-				return
-			}
-			if q.C == 0 {
-				log.Warn("finnhub: zero price", "symbol", symbol)
-				return
-			}
-			mu.Lock()
-			out = append(out, priceItem{
-				InstrumentID: inst.ID,
-				Price:        formatFloat(q.C),
-			})
-			mu.Unlock()
-		}(inst, symbol)
-	}
-	wg.Wait()
-	return out
-}
-
-func (f *finnhubClient) quote(ctx context.Context, symbol string) (finnhubQuote, error) {
-	params := url.Values{}
-	params.Set("symbol", symbol)
-	params.Set("token", f.apiKey)
-	urlStr := finnhubAPIBase + "/quote?" + params.Encode()
-
-	var lastErr error
-	var out finnhubQuote
-	for attempt := 0; attempt < finnhubRetries; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return out, ctx.Err()
-			case <-time.After(time.Duration(1<<uint(attempt-1)) * time.Second):
-			}
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
-		if err != nil {
-			return out, err
-		}
-		req.Header.Set("Accept", "application/json")
-		res, err := f.http.Do(req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		func() {
-			defer res.Body.Close()
-			if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-				lastErr = fmt.Errorf("finnhub auth: HTTP %d", res.StatusCode)
-				return
-			}
-			if res.StatusCode == http.StatusTooManyRequests {
-				lastErr = fmt.Errorf("finnhub rate limited")
-				return
-			}
-			if res.StatusCode >= 400 {
-				lastErr = fmt.Errorf("finnhub HTTP %d", res.StatusCode)
-				return
-			}
-			if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-				lastErr = fmt.Errorf("decode: %w", err)
-				return
-			}
-			lastErr = nil
-		}()
-		// Auth errors are terminal — don't retry.
-		if lastErr == nil {
-			return out, nil
-		}
-		if strings.Contains(lastErr.Error(), "auth:") {
-			return out, lastErr
-		}
-	}
-	return out, lastErr
-}
-
-func formatFloat(v float64) string {
-	// finnhub returns prices with up to ~4 decimal digits; %g trims trailing zeros.
-	return fmt.Sprintf("%g", v)
 }
