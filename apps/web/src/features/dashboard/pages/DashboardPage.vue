@@ -22,6 +22,7 @@ import {
   formatQuantity,
   formatRelative,
 } from "@/lib/formatters";
+import { pluralRu } from "@/lib/plural";
 import type { AssetClass } from "@/api/generated/model/assetClass";
 
 const ui = useUiStore();
@@ -260,11 +261,11 @@ function valueDisplaySuffix(): string {
 }
 
 function pluralAccounts(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "аккаунт";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "аккаунта";
-  return "аккаунтов";
+  return pluralRu(n, ["аккаунт", "аккаунта", "аккаунтов"]);
+}
+
+function pluralPositions(n: number): string {
+  return pluralRu(n, ["позиция", "позиции", "позиций"]);
 }
 </script>
 
@@ -290,7 +291,7 @@ function pluralAccounts(n: number): string {
           {{ formatCurrency(grandTotal, ui.displayCurrency) }}
         </div>
         <div class="text-xs text-muted-foreground mt-1.5">
-          {{ positions.length }} позиций · {{ accountCount }} аккаунта · {{ formatDate(new Date()) }}
+          {{ positions.length }} {{ pluralPositions(positions.length) }} · {{ accountCount }} {{ pluralAccounts(accountCount) }} · {{ formatDate(new Date()) }}
         </div>
       </div>
 
