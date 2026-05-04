@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
@@ -152,6 +154,72 @@ func (a *adminHandlers) upsertPrices(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Duration = time.Since(start).String()
 	a.deps.Logger.Info("admin: prices upserted",
+		"updated", resp.Updated, "failed", resp.Failed, "duration_ms", time.Since(start).Milliseconds())
+	writeJSON(w, http.StatusOK, resp)
+}
+
+type adminFXRateItem struct {
+	Date    string `json:"date"` // YYYY-MM-DD
+	FromCcy string `json:"fromCcy"`
+	ToCcy   string `json:"toCcy"`
+	Rate    string `json:"rate"`
+}
+
+type adminUpsertFXRequest struct {
+	Rates []adminFXRateItem `json:"rates"`
+}
+
+type adminUpsertFXResponse struct {
+	Updated  int      `json:"updated"`
+	Failed   int      `json:"failed"`
+	Errors   []string `json:"errors,omitempty"`
+	Duration string   `json:"duration"`
+}
+
+// upsertFXRates writes a batch of (date, from_ccy, to_ccy, rate) tuples to the
+// fx_rates table. Each row is independently upserted; per-row failures are
+// counted but don't abort the batch.
+func (a *adminHandlers) upsertFXRates(w http.ResponseWriter, r *http.Request) {
+	var req adminUpsertFXRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAdminError(w, http.StatusBadRequest, fmt.Sprintf("decode: %v", err))
+		return
+	}
+	if len(req.Rates) == 0 {
+		writeJSON(w, http.StatusOK, adminUpsertFXResponse{Duration: "0s"})
+		return
+	}
+
+	start := time.Now()
+	resp := adminUpsertFXResponse{}
+	ctx := r.Context()
+	for _, item := range req.Rates {
+		date, err := time.Parse("2006-01-02", item.Date)
+		if err != nil {
+			resp.Failed++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("%s/%s: invalid date %q", item.FromCcy, item.ToCcy, item.Date))
+			continue
+		}
+		rate, err := decimal.NewFromString(item.Rate)
+		if err != nil || rate.Sign() < 0 {
+			resp.Failed++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("%s/%s: invalid rate %q", item.FromCcy, item.ToCcy, item.Rate))
+			continue
+		}
+		if err := a.deps.Queries.UpsertFxRate(ctx, storage.UpsertFxRateParams{
+			Date:    pgtype.Date{Time: date, Valid: true},
+			FromCcy: strings.ToUpper(item.FromCcy),
+			ToCcy:   strings.ToUpper(item.ToCcy),
+			Rate:    rate,
+		}); err != nil {
+			resp.Failed++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("%s/%s: %v", item.FromCcy, item.ToCcy, err))
+			continue
+		}
+		resp.Updated++
+	}
+	resp.Duration = time.Since(start).String()
+	a.deps.Logger.Info("admin: fx rates upserted",
 		"updated", resp.Updated, "failed", resp.Failed, "duration_ms", time.Since(start).Milliseconds())
 	writeJSON(w, http.StatusOK, resp)
 }

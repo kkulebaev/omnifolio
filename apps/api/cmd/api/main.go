@@ -123,11 +123,6 @@ func run() error {
 			},
 		},
 		scheduler.Job{
-			Name: "fx-refresh",
-			Spec: "0 6 * * *",
-			Run:  fxSvc.Refresh,
-		},
-		scheduler.Job{
 			Name: "sync-brokerage-accounts",
 			Spec: "0 * * * *",
 			Run:  syncerSvc.SyncAll,
@@ -137,13 +132,6 @@ func run() error {
 	}
 	sched.Start()
 	defer sched.Stop()
-
-	// Initial FX seed (best-effort) so /portfolio works on first run.
-	go func() {
-		if err := fxSvc.Refresh(rootCtx); err != nil {
-			log.Warn("fx initial refresh failed", "err", err)
-		}
-	}()
 
 	handler, err := server.New(server.Deps{
 		Auth:        authSvc,

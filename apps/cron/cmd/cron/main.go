@@ -2,7 +2,8 @@
 // once per invocation: build a seed catalog (static us_* list + dynamic
 // ru_stock snapshot from T-Invest + dynamic crypto snapshot from Bybit) →
 // POST /admin/instruments → GET /admin/instruments → fetch quotes from external
-// providers → POST /admin/prices → exit. Designed for Railway's cron mode.
+// providers → POST /admin/prices → fetch FX rates from cbr.ru → POST /admin/fx →
+// exit. Designed for Railway's cron mode.
 package main
 
 import (
@@ -165,21 +166,42 @@ func run(log *slog.Logger) error {
 		prices = append(prices, bb.fetchPrices(ctx, eligible, log)...)
 	}
 
-	if len(prices) == 0 {
-		log.Info("cron: nothing to upsert")
-		return nil
+	if len(prices) > 0 {
+		resp, err := upsertPrices(ctx, cfg, prices)
+		if err != nil {
+			return fmt.Errorf("upsert prices: %w", err)
+		}
+		log.Info("cron: prices upserted", "updated", resp.Updated, "failed", resp.Failed, "duration", resp.Duration)
+		if resp.Failed > 0 {
+			for _, e := range resp.Errors {
+				log.Warn("cron: price upsert error", "msg", e)
+			}
+		}
+	} else {
+		log.Info("cron: no prices to upsert")
 	}
 
-	resp, err := upsertPrices(ctx, cfg, prices)
+	// FX channel: cbr.ru daily snapshot. RUB-pair rates feed portfolio's
+	// triangulation. Failures are warned but don't fail the cron run.
+	cbr := newCBRClient()
+	rates, err := cbr.fetchDaily(ctx, time.Now().UTC())
 	if err != nil {
-		return fmt.Errorf("upsert prices: %w", err)
-	}
-	log.Info("cron: done", "updated", resp.Updated, "failed", resp.Failed, "duration", resp.Duration)
-	if resp.Failed > 0 {
-		for _, e := range resp.Errors {
-			log.Warn("cron: upsert error", "msg", e)
+		log.Warn("cron: cbr fetch failed; fx channel skipped", "err", err)
+	} else if len(rates) == 0 {
+		log.Warn("cron: cbr returned no rates; fx channel skipped")
+	} else {
+		log.Info("cron: cbr rates fetched", "count", len(rates))
+		fxResp, err := upsertFXRates(ctx, cfg, rates)
+		if err != nil {
+			return fmt.Errorf("upsert fx: %w", err)
+		}
+		log.Info("cron: fx upserted", "updated", fxResp.Updated, "failed", fxResp.Failed, "duration", fxResp.Duration)
+		for _, e := range fxResp.Errors {
+			log.Warn("cron: fx upsert error", "msg", e)
 		}
 	}
+
+	log.Info("cron: done")
 	return nil
 }
 
@@ -308,6 +330,48 @@ func upsertPrices(ctx context.Context, cfg config, prices []priceItem) (upsertRe
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		return upsertResponse{}, fmt.Errorf("admin/prices: HTTP %d", res.StatusCode)
+	}
+	var out upsertResponse
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return upsertResponse{}, fmt.Errorf("decode: %w", err)
+	}
+	return out, nil
+}
+
+type fxRateItem struct {
+	Date    string `json:"date"`
+	FromCcy string `json:"fromCcy"`
+	ToCcy   string `json:"toCcy"`
+	Rate    string `json:"rate"`
+}
+
+func upsertFXRates(ctx context.Context, cfg config, rates []fxRate) (upsertResponse, error) {
+	items := make([]fxRateItem, 0, len(rates))
+	for _, r := range rates {
+		items = append(items, fxRateItem{
+			Date:    r.Date.Format("2006-01-02"),
+			FromCcy: r.FromCcy,
+			ToCcy:   r.ToCcy,
+			Rate:    r.Rate.String(),
+		})
+	}
+	body, err := json.Marshal(map[string]any{"rates": items})
+	if err != nil {
+		return upsertResponse{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.APIURL+"/admin/fx", bytes.NewReader(body))
+	if err != nil {
+		return upsertResponse{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.AdminAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := adminClient().Do(req)
+	if err != nil {
+		return upsertResponse{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return upsertResponse{}, fmt.Errorf("admin/fx: HTTP %d", res.StatusCode)
 	}
 	var out upsertResponse
 	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {

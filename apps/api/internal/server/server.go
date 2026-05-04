@@ -62,6 +62,7 @@ func New(d Deps) (http.Handler, error) {
 		rt.Get("/instruments", admin.listInstruments)
 		rt.Post("/instruments", admin.seedInstruments)
 		rt.Post("/prices", admin.upsertPrices)
+		rt.Post("/fx", admin.upsertFXRates)
 	})
 
 	// User-facing API: OpenAPI validation + session middleware.

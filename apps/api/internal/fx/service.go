@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
@@ -18,15 +16,15 @@ var (
 	ErrRateUnavailable = errors.New("fx: rate unavailable")
 )
 
-// Service provides FX rate lookups and a daily refresh job.
+// Service provides FX rate lookups. Rates are populated by the cron service
+// via POST /admin/fx; this service is read-only.
 type Service struct {
 	q   *storage.Queries
-	cbr *CBRClient
 	log *slog.Logger
 }
 
 func NewService(q *storage.Queries, log *slog.Logger) *Service {
-	return &Service{q: q, cbr: NewCBRClient(), log: log}
+	return &Service{q: q, log: log}
 }
 
 // GetRate returns the conversion factor: amount in `from` × rate = amount in `to`.
@@ -67,26 +65,6 @@ func (s *Service) GetRate(ctx context.Context, from, to string) (decimal.Decimal
 	return decimal.Zero, ErrRateUnavailable
 }
 
-// Refresh fetches today's rates from cbr.ru and upserts them. Run as cron daily.
-func (s *Service) Refresh(ctx context.Context) error {
-	rates, err := s.cbr.FetchDaily(ctx, fxToday())
-	if err != nil {
-		return fmt.Errorf("cbr fetch: %w", err)
-	}
-	for _, r := range rates {
-		if err := s.q.UpsertFxRate(ctx, storage.UpsertFxRateParams{
-			Date:    pgtype.Date{Time: r.Date, Valid: true},
-			FromCcy: r.FromCcy,
-			ToCcy:   r.ToCcy,
-			Rate:    r.Rate,
-		}); err != nil {
-			return fmt.Errorf("upsert %s/%s: %w", r.FromCcy, r.ToCcy, err)
-		}
-	}
-	s.log.Info("fx: refreshed", "rates", len(rates))
-	return nil
-}
-
 func normalizeCcy(c string) string {
 	switch c {
 	case "USDT", "BUSD", "USDC":
@@ -95,6 +73,3 @@ func normalizeCcy(c string) string {
 		return c
 	}
 }
-
-// fxToday is overridable in tests.
-var fxToday = func() time.Time { return time.Now().UTC() }

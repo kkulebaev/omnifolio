@@ -66,8 +66,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 `apps/cron` is a one-shot Go binary that on each invocation:
 1. Seeds the canonical instruments catalog from three sources: a static US list from the embedded `apps/cron/cmd/cron/instruments.json`; if `TINVEST_TOKEN` is set, every MOEX share (`class_code='TQBR'`) returned by T-Invest `InstrumentsService.Shares`; and every USDT-quoted spot pair currently trading on Bybit (`/v5/market/instruments-info`, public — stablecoins excluded). All three lists are POSTed to `/admin/instruments` (idempotent — existing rows are no-ops).
 2. Pulls quotes from external providers — Finnhub for `us_stock` / `us_etf`, T-Invest `MarketDataService.GetLastPrices` for `ru_stock`, Bybit `/v5/market/tickers` for `crypto` — and writes them via `POST /admin/prices`.
+3. Pulls daily FX rates from cbr.ru (`XML_daily.asp`, every published currency vs RUB) and writes them via `POST /admin/fx`. The api uses these for `/portfolio` currency conversion; without a recent cron run, conversions degrade to `ErrRateUnavailable`.
 
-It does not talk to the DB directly. To add/remove tracked US tickers, edit `apps/cron/cmd/cron/instruments.json` and redeploy the **cron** service. The Russian and crypto universes are rebuilt from T-Invest and Bybit on every run, so no manual list is maintained for them. Trigger manually in dev:
+It does not talk to the DB directly. To add/remove tracked US tickers, edit `apps/cron/cmd/cron/instruments.json` and redeploy the **cron** service. The Russian and crypto universes are rebuilt from T-Invest and Bybit on every run, so no manual list is maintained for them. After a fresh deploy run the cron once manually so `/portfolio` has FX rates and prices to work with. Trigger manually in dev:
 
 ```sh
 docker compose --profile cron run --rm \
