@@ -44,64 +44,63 @@ async function handleLogout() {
 </script>
 
 <template>
-  <!-- TODO(tw-arb): spacing px-[22px] py-[10px] px-[9px] py-[3px] px-[7px] p-[1px] gap-[8px] gap-[10px] | size w-[24px] h-[13px] w-[11px] h-[11px] top-[1px] left-[1px] left-[12px] | radius rounded-[3px|4px|6px|7px] | text text-[11px|11.5px|12px|12.5px] font-[inherit] | misc shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[left] -->
   <header
-    class="flex items-center justify-between px-[22px] py-[10px] border-b border-border bg-background text-[12px]"
+    class="flex items-center justify-between px-6 py-2.5 border-b border-border bg-background text-xs"
   >
-    <div class="flex items-center gap-[10px] text-muted-foreground">
+    <div class="flex items-center gap-2.5 text-muted-foreground">
       <template v-for="(b, i) in breadcrumbs" :key="i">
         <span v-if="i > 0" class="text-subtle">/</span>
         <RouterLink
           v-if="b.to && i < breadcrumbs.length - 1"
           :to="b.to"
-          class="bg-transparent border-none cursor-pointer text-muted-foreground text-[12.5px] no-underline"
+          class="bg-transparent border-none cursor-pointer text-muted-foreground text-xs no-underline"
         >{{ b.label }}</RouterLink>
         <span
           v-else
-          class="text-[12.5px]"
+          class="text-xs"
           :class="i === breadcrumbs.length - 1 ? 'text-foreground font-medium' : 'text-muted-foreground font-normal'"
         >{{ b.label }}</span>
       </template>
     </div>
 
-    <div class="flex items-center gap-[8px]">
+    <div class="flex items-center gap-2">
       <button
         :title="ui.privacy ? 'Показать суммы' : 'Скрыть суммы (privacy)'"
         @click="ui.togglePrivacy"
-        class="inline-flex items-center cursor-pointer gap-[8px] px-[9px] py-[3px] border border-border rounded-[4px] bg-panel text-muted-foreground text-[11.5px] font-[inherit]"
+        class="inline-flex items-center cursor-pointer gap-2 px-2.5 py-1 border border-border rounded-sm bg-panel text-muted-foreground text-xs"
       >
         <span :class="ui.privacy ? 'text-foreground' : 'text-muted-foreground'">Privacy</span>
         <span
-          class="relative inline-block w-[24px] h-[13px] rounded-[7px] transition-colors duration-150"
+          class="relative inline-block w-6 h-3.5 rounded-full transition-colors duration-150"
           :class="ui.privacy ? 'bg-accent' : 'bg-subtle'"
         >
           <span
-            class="absolute top-[1px] w-[11px] h-[11px] rounded-[6px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[left] duration-150"
-            :class="ui.privacy ? 'left-[12px]' : 'left-[1px]'"
+            class="absolute top-px w-3 h-3 rounded-full bg-white shadow-sm transition-all duration-150"
+            :class="ui.privacy ? 'left-3' : 'left-px'"
           />
         </span>
       </button>
 
-      <div class="flex border border-border rounded-[4px] p-[1px] bg-panel">
+      <div class="flex border border-border rounded-sm p-px bg-panel">
         <button
           v-for="c in ui.SUPPORTED_CURRENCIES"
           :key="c"
           @click="ui.displayCurrency = c"
-          class="border-none px-[9px] py-[3px] rounded-[3px] text-[11.5px] cursor-pointer font-[inherit]"
+          class="border-none px-2.5 py-1 rounded-sm text-xs cursor-pointer"
           :class="ui.displayCurrency === c ? 'bg-soft text-foreground font-medium' : 'bg-transparent text-muted-foreground font-normal'"
         >{{ c }}</button>
       </div>
 
       <div
-        class="flex cursor-pointer border border-border rounded-[4px] p-[1px] bg-panel"
+        class="flex cursor-pointer border border-border rounded-sm p-px bg-panel"
         @click="ui.toggleTheme"
       >
         <span
-          class="px-[7px] py-[3px] rounded-[3px] text-[11px]"
+          class="px-2 py-1 rounded-sm text-xs"
           :class="ui.theme !== 'dark' ? 'bg-soft text-foreground' : 'bg-transparent text-muted-foreground'"
         >☀</span>
         <span
-          class="px-[7px] py-[3px] rounded-[3px] text-[11px]"
+          class="px-2 py-1 rounded-sm text-xs"
           :class="ui.theme === 'dark' ? 'bg-soft text-foreground' : 'bg-transparent text-muted-foreground'"
         >☾</span>
       </div>
@@ -110,7 +109,7 @@ async function handleLogout() {
         v-if="auth.user"
         @click="handleLogout"
         :title="`Выйти (${auth.user.email})`"
-        class="bg-transparent border border-border text-muted-foreground px-[9px] py-[3px] rounded-[4px] text-[11.5px] cursor-pointer font-[inherit]"
+        class="bg-transparent border border-border text-muted-foreground px-2.5 py-1 rounded-sm text-xs cursor-pointer"
       >Выйти</button>
     </div>
   </header>

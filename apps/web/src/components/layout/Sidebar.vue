@@ -67,17 +67,16 @@ const userInitials = computed(() => {
 </script>
 
 <template>
-  <!-- TODO(tw-arb): spacing px-[10px] py-[14px] py-[5px] py-[6px] p-[8px] pt-[4px] pb-[16px] mt-[18px] gap-[3px] gap-[8px] gap-[9px] | size w-[188px] w-[18px] w-[14px] w-[24px] h-[18px] h-[24px] h-[2px] | radius rounded-[1px|4px|5px|12px] | text text-[10px|11px|11.5px|12px|12.5px|13px] font-[inherit] tracking-[-0.01em] tracking-[0.07em] -->
   <aside
-    class="flex flex-col overflow-hidden border-r border-border bg-background w-[188px] px-[10px] py-[14px]"
+    class="flex flex-col overflow-hidden border-r border-border bg-background w-48 px-2.5 py-3.5"
   >
-    <div class="flex items-center gap-2 pt-[4px] px-[8px] pb-[16px]">
+    <div class="flex items-center gap-2 pt-1 px-2 pb-4">
       <div
-        class="grid place-items-center text-white font-bold w-[18px] h-[18px] rounded-[4px] bg-accent text-[10px]"
+        class="grid place-items-center text-white font-bold w-5 h-5 rounded-sm bg-accent text-xs"
       >
         O
       </div>
-      <span class="font-semibold text-[13px] tracking-[-0.01em]">
+      <span class="font-semibold text-sm tracking-tight">
         Omnifolio
       </span>
     </div>
@@ -92,7 +91,7 @@ const userInitials = computed(() => {
       >
         <button
           @click="navigate"
-          class="flex items-center cursor-pointer text-left border-none px-[8px] py-[6px] rounded-[5px] text-[12.5px] leading-none gap-[9px] font-[inherit]"
+          class="flex items-center cursor-pointer text-left border-none px-2 py-1.5 rounded-md text-xs leading-none gap-2.5"
           :class="isActive(n.to) ? 'bg-soft text-foreground font-medium' : 'bg-transparent text-muted-foreground font-normal'"
         >
           <component
@@ -109,16 +108,16 @@ const userInitials = computed(() => {
         v-for="n in navItems.filter((i) => !i.enabled)"
         :key="n.id"
         disabled
-        class="flex items-center text-left bg-transparent border-none text-subtle px-[8px] py-[6px] rounded-[5px] text-[12.5px] leading-none gap-[9px] font-[inherit] cursor-not-allowed"
+        class="flex items-center text-left bg-transparent border-none text-subtle px-2 py-1.5 rounded-md text-xs leading-none gap-2.5 cursor-not-allowed"
       >
         <component :is="n.icon" :size="16" :stroke-width="1.75" class="shrink-0" />
         {{ n.label }}
       </button>
     </nav>
 
-    <div class="mt-[18px]">
+    <div class="mt-4">
       <div
-        class="flex justify-between uppercase text-[10px] text-muted-foreground tracking-[0.07em] px-[8px] py-[6px]"
+        class="flex justify-between uppercase text-xs text-muted-foreground tracking-wider px-2 py-1.5"
       >
         <span>Аккаунты</span>
         <span class="num">{{ accountsWithShare.length }}</span>
@@ -132,17 +131,17 @@ const userInitials = computed(() => {
       >
         <button
           @click="navigate"
-          class="w-full text-left flex flex-col cursor-pointer bg-transparent border-none text-inherit px-[8px] py-[5px] gap-[3px] font-[inherit] rounded-[4px]"
+          class="w-full text-left flex flex-col cursor-pointer bg-transparent border-none text-inherit px-2 py-1.5 gap-1 rounded-sm"
         >
-          <div class="flex justify-between text-[12px]">
+          <div class="flex justify-between text-xs">
             <span class="overflow-hidden text-ellipsis whitespace-nowrap">
               {{ a.shortName }}
             </span>
-            <span class="num text-muted-foreground text-[11px]">
+            <span class="num text-muted-foreground text-xs">
               {{ (a.share * 100).toFixed(0) }}%
             </span>
           </div>
-          <div class="h-[2px] bg-soft rounded-[1px] overflow-hidden">
+          <div class="h-0.5 bg-soft rounded-xs overflow-hidden">
             <div
               class="h-full bg-accent opacity-70"
               :style="{ width: `${a.share * 100}%` }"
@@ -152,15 +151,15 @@ const userInitials = computed(() => {
       </RouterLink>
     </div>
 
-    <div class="flex items-center mt-auto p-[8px] gap-[8px] border-t border-border">
+    <div class="flex items-center mt-auto p-2 gap-2 border-t border-border">
       <div
-        class="grid place-items-center font-semibold w-[24px] h-[24px] rounded-[12px] bg-soft border border-border text-[10px]"
+        class="grid place-items-center font-semibold w-6 h-6 rounded-xl bg-soft border border-border text-xs"
       >
         {{ userInitials }}
       </div>
-      <div class="min-w-0 text-[11.5px]">
+      <div class="min-w-0 text-xs">
         <div class="font-medium">{{ auth.user?.email?.split("@")[0] ?? "—" }}</div>
-        <div class="text-muted-foreground text-[10px] overflow-hidden text-ellipsis whitespace-nowrap">
+        <div class="text-muted-foreground text-xs overflow-hidden text-ellipsis whitespace-nowrap">
           {{ auth.user?.email ?? "" }}
         </div>
       </div>
