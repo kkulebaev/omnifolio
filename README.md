@@ -60,7 +60,11 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 ## Cron service (price refresh)
 
-`apps/cron` is a one-shot Go binary that pulls quotes from external providers (Finnhub for US stocks/ETFs) and writes them via the api's `/admin/prices` endpoint. It does not talk to the DB directly. Trigger manually in dev:
+`apps/cron` is a one-shot Go binary that on each invocation:
+1. Seeds the canonical instruments catalog from the embedded `apps/cron/cmd/cron/instruments.json` via `POST /admin/instruments` (idempotent — existing rows are no-ops).
+2. Pulls quotes from external providers (Finnhub for `us_stock` / `us_etf`) and writes them via `POST /admin/prices`.
+
+It does not talk to the DB directly. To add/remove tracked US tickers, edit `apps/cron/cmd/cron/instruments.json` and redeploy the **cron** service. Trigger manually in dev:
 
 ```sh
 docker compose --profile cron run --rm -e FINNHUB_API_KEY=$FINNHUB_API_KEY cron

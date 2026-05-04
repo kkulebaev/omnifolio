@@ -60,6 +60,7 @@ func New(d Deps) (http.Handler, error) {
 	r.Route("/admin", func(rt chi.Router) {
 		rt.Use(auth.RequireAdmin(d.AdminAPIKey))
 		rt.Get("/instruments", admin.listInstruments)
+		rt.Post("/instruments", admin.seedInstruments)
 		rt.Post("/prices", admin.upsertPrices)
 	})
 

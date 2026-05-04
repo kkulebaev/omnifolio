@@ -52,6 +52,54 @@ func (a *adminHandlers) listInstruments(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, out)
 }
 
+type adminSeedInstrument struct {
+	Ticker     string `json:"ticker"`
+	Name       string `json:"name"`
+	Currency   string `json:"currency"`
+	AssetClass string `json:"assetClass"`
+}
+
+type adminSeedInstrumentsRequest struct {
+	Items []adminSeedInstrument `json:"items"`
+}
+
+type adminSeedInstrumentsResponse struct {
+	Processed int      `json:"processed"`
+	Failed    int      `json:"failed"`
+	Errors    []string `json:"errors,omitempty"`
+}
+
+// seedInstruments idempotently registers a batch of canonical instruments.
+// Used by the cron service to keep the catalog in sync with its embedded
+// instruments.json. Each item goes through CreateOrGet — pre-existing rows
+// (matched by LOWER(ticker) + asset_class) are no-ops.
+func (a *adminHandlers) seedInstruments(w http.ResponseWriter, r *http.Request) {
+	var req adminSeedInstrumentsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAdminError(w, http.StatusBadRequest, fmt.Sprintf("decode: %v", err))
+		return
+	}
+
+	resp := adminSeedInstrumentsResponse{}
+	ctx := r.Context()
+	for _, item := range req.Items {
+		if _, err := a.deps.Instrument.CreateOrGet(ctx, instrument.CreateInput{
+			Ticker:     item.Ticker,
+			AssetClass: item.AssetClass,
+			Currency:   item.Currency,
+			Name:       item.Name,
+		}); err != nil {
+			resp.Failed++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("%s: %v", item.Ticker, err))
+			continue
+		}
+		resp.Processed++
+	}
+	a.deps.Logger.Info("admin: instruments seeded",
+		"processed", resp.Processed, "failed", resp.Failed)
+	writeJSON(w, http.StatusOK, resp)
+}
+
 type adminPriceItem struct {
 	InstrumentID uuid.UUID `json:"instrumentId"`
 	Price        string    `json:"price"`
@@ -123,4 +171,3 @@ func writeAdminError(w http.ResponseWriter, status int, detail string) {
 		"detail": detail,
 	})
 }
-

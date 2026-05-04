@@ -1,11 +1,13 @@
 // Package main is the entrypoint for the price-refresh cron service. It runs
-// once per invocation: GET /admin/instruments → fetch quotes from external
-// providers → POST /admin/prices → exit. Designed for Railway's cron mode.
+// once per invocation: seed the canonical catalog from instruments.json →
+// GET /admin/instruments → fetch quotes from external providers →
+// POST /admin/prices → exit. Designed for Railway's cron mode.
 package main
 
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -19,11 +21,14 @@ import (
 	"github.com/google/uuid"
 )
 
+//go:embed instruments.json
+var seedJSON []byte
+
 const (
-	httpTimeout       = 15 * time.Second
-	finnhubAPIBase    = "https://finnhub.io/api/v1"
-	finnhubMaxConcur  = 8
-	finnhubRetries    = 3
+	httpTimeout      = 15 * time.Second
+	finnhubAPIBase   = "https://finnhub.io/api/v1"
+	finnhubMaxConcur = 8
+	finnhubRetries   = 3
 )
 
 type config struct {
@@ -64,6 +69,16 @@ func run(log *slog.Logger) error {
 	defer cancel()
 
 	log.Info("cron: start", "api_url", cfg.APIURL)
+
+	if seedResp, err := seedInstruments(ctx, cfg); err != nil {
+		return fmt.Errorf("seed instruments: %w", err)
+	} else {
+		log.Info("cron: catalog seeded",
+			"processed", seedResp.Processed, "failed", seedResp.Failed)
+		for _, e := range seedResp.Errors {
+			log.Warn("cron: seed error", "msg", e)
+		}
+	}
 
 	insts, err := listInstruments(ctx, cfg)
 	if err != nil {
@@ -129,6 +144,55 @@ type upsertResponse struct {
 
 func adminClient() *http.Client {
 	return &http.Client{Timeout: httpTimeout}
+}
+
+type seedItem struct {
+	Ticker     string `json:"ticker"`
+	Name       string `json:"name"`
+	Currency   string `json:"currency"`
+	AssetClass string `json:"assetClass"`
+}
+
+type seedResponse struct {
+	Processed int      `json:"processed"`
+	Failed    int      `json:"failed"`
+	Errors    []string `json:"errors,omitempty"`
+}
+
+// seedInstruments idempotently registers every entry from instruments.json
+// in the canonical catalog. CreateOrGet on the api side ensures duplicates
+// are no-ops, so it's safe to run on every invocation.
+func seedInstruments(ctx context.Context, cfg config) (seedResponse, error) {
+	var items []seedItem
+	if err := json.Unmarshal(seedJSON, &items); err != nil {
+		return seedResponse{}, fmt.Errorf("parse instruments.json: %w", err)
+	}
+	if len(items) == 0 {
+		return seedResponse{}, nil
+	}
+	body, err := json.Marshal(map[string]any{"items": items})
+	if err != nil {
+		return seedResponse{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.APIURL+"/admin/instruments", bytes.NewReader(body))
+	if err != nil {
+		return seedResponse{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.AdminAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := adminClient().Do(req)
+	if err != nil {
+		return seedResponse{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return seedResponse{}, fmt.Errorf("admin/instruments POST: HTTP %d", res.StatusCode)
+	}
+	var out seedResponse
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return seedResponse{}, fmt.Errorf("decode: %w", err)
+	}
+	return out, nil
 }
 
 func listInstruments(ctx context.Context, cfg config) ([]instrumentItem, error) {
@@ -205,8 +269,8 @@ func newFinnhubClient(apiKey string) *finnhubClient {
 }
 
 type finnhubQuote struct {
-	C float64 `json:"c"`  // current price; 0 means symbol unknown
-	T int64   `json:"t"`  // unix timestamp (seconds)
+	C float64 `json:"c"` // current price; 0 means symbol unknown
+	T int64   `json:"t"` // unix timestamp (seconds)
 }
 
 func (f *finnhubClient) fetchAll(ctx context.Context, insts []instrumentItem, log *slog.Logger) []priceItem {
