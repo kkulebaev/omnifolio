@@ -14,7 +14,7 @@ const navItems = [
   { id: "dash", label: "Дэшборд", icon: "◐", to: "/", enabled: true },
   { id: "acc", label: "Аккаунты", icon: "▤", to: "/accounts", enabled: true },
   { id: "ins", label: "Инструменты", icon: "⌗", to: "/instruments", enabled: true },
-  { id: "set", label: "Настройки", icon: "⚙", to: "/settings", enabled: false },
+  { id: "set", label: "Настройки", icon: "⚙", to: "/settings", enabled: true },
 ];
 
 function isActive(to: string): boolean {

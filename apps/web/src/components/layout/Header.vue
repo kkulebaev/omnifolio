@@ -23,6 +23,10 @@ const breadcrumbs = computed<Array<{ label: string; to?: string }>>(() => {
     if (route.params.id) {
       segments.push({ label: String(route.params.id).slice(0, 8) });
     }
+  } else if (route.path.startsWith("/instruments")) {
+    segments.push({ label: "Инструменты" });
+  } else if (route.path.startsWith("/settings")) {
+    segments.push({ label: "Настройки" });
   }
   return segments;
 });
