@@ -14,19 +14,6 @@ import CreateAccountDialog from "../components/CreateAccountDialog.vue";
 
 const accounts = useListAccounts();
 const dialogOpen = ref(false);
-
-function statusBadge(s: string | null | undefined): { label: string; cls: string } | null {
-  switch (s) {
-    case "pending":
-      return { label: "синхр…", cls: "bg-yellow-200 text-yellow-900" };
-    case "success":
-      return { label: "ok", cls: "bg-green-200 text-green-900" };
-    case "failed":
-      return { label: "ошибка", cls: "bg-red-200 text-red-900" };
-    default:
-      return null;
-  }
-}
 </script>
 
 <template>
@@ -56,16 +43,7 @@ function statusBadge(s: string | null | undefined): { label: string; cls: string
       >
         <Card class="hover:bg-muted/30 transition">
           <CardHeader>
-            <div class="flex items-start justify-between gap-2">
-              <CardTitle>{{ a.name }}</CardTitle>
-              <span
-                v-if="statusBadge(a.lastSyncStatus)"
-                class="text-xs px-2 py-0.5 rounded-full"
-                :class="statusBadge(a.lastSyncStatus)!.cls"
-              >
-                {{ statusBadge(a.lastSyncStatus)!.label }}
-              </span>
-            </div>
+            <CardTitle>{{ a.name }}</CardTitle>
             <CardDescription>
               {{ a.type }} · создан {{ formatDate(a.createdAt) }}
             </CardDescription>
