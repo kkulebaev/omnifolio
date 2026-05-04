@@ -25,10 +25,12 @@ The web app proxies `/api/*` to `localhost:8080`. Bootstrap user is created from
 
 ## Production (Railway)
 
-`main` branch auto-deploys to Railway via GitHub integration:
+`main` branch auto-deploys to Railway via GitHub integration. Intended watch-pattern scope per service:
 - `apps/api/**` and `api/**` changes rebuild the **api** service.
 - `apps/web/**`, `api/**`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json` changes rebuild the **web** service.
 - `apps/cron/**` changes rebuild the **cron** service.
+
+For service IDs, current watch-patterns state, and how to manage Railway settings, see [`docs/railway.md`](docs/railway.md).
 
 Env vars required per service (set via Railway dashboard or `railway variables`):
 
