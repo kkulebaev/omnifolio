@@ -329,14 +329,20 @@ function pluralAccounts(n: number): string {
         <div class="flex gap-[6px] text-[11px]">
           <button
             type="button"
-            @click="ui.toggleMergePositions()"
-            :aria-pressed="ui.mergePositions"
-            :title="ui.mergePositions ? 'Свернуты по тикеру' : 'По аккаунтам'"
-            class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel inline-flex items-center gap-[4px] hover:bg-soft transition-colors outline-none"
-            :class="ui.mergePositions ? 'text-foreground bg-soft' : 'text-muted-foreground'"
+            :title="ui.mergePositions ? 'Развернуть по аккаунтам' : 'Агрегировать по тикеру'"
+            @click="ui.toggleMergePositions"
+            class="inline-flex items-center cursor-pointer gap-[8px] px-[9px] py-[3px] border border-border rounded-[4px] bg-panel text-muted-foreground text-[11.5px] font-[inherit]"
           >
-            <Layers class="w-[10px] h-[10px] opacity-70" />
-            {{ ui.mergePositions ? 'Свёрнуто' : 'По аккаунтам' }}
+            <span :class="ui.mergePositions ? 'text-foreground' : 'text-muted-foreground'">Агрегировать</span>
+            <span
+              class="relative inline-block w-[24px] h-[13px] rounded-[7px] transition-colors duration-150"
+              :class="ui.mergePositions ? 'bg-accent' : 'bg-subtle'"
+            >
+              <span
+                class="absolute top-[1px] w-[11px] h-[11px] rounded-[6px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[left] duration-150"
+                :class="ui.mergePositions ? 'left-[12px]' : 'left-[1px]'"
+              />
+            </span>
           </button>
 
           <DropdownMenuRoot>
