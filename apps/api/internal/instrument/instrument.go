@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/shopspring/decimal"
 
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
 )
@@ -28,13 +29,15 @@ const (
 )
 
 type Instrument struct {
-	ID         uuid.UUID
-	Ticker     string
-	AssetClass string
-	Currency   string
-	Name       string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID             uuid.UUID
+	Ticker         string
+	AssetClass     string
+	Currency       string
+	Name           string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	CurrentPrice   *decimal.Decimal
+	PriceFetchedAt *time.Time
 }
 
 type CreateInput struct {
@@ -150,7 +153,7 @@ func (s *Service) List(ctx context.Context, in ListInput) (ListResult, error) {
 	}
 	items := make([]Instrument, len(rows))
 	for i, row := range rows {
-		items[i] = toInstrument(row)
+		items[i] = toInstrumentFromListRow(row)
 	}
 	return ListResult{Items: items, Total: total}, nil
 }
@@ -165,4 +168,25 @@ func toInstrument(row storage.Instrument) Instrument {
 		CreatedAt:  row.CreatedAt.Time,
 		UpdatedAt:  row.UpdatedAt.Time,
 	}
+}
+
+func toInstrumentFromListRow(row storage.ListInstrumentsRow) Instrument {
+	out := Instrument{
+		ID:         row.ID,
+		Ticker:     row.Ticker,
+		AssetClass: row.AssetClass,
+		Currency:   row.Currency,
+		Name:       row.Name,
+		CreatedAt:  row.CreatedAt.Time,
+		UpdatedAt:  row.UpdatedAt.Time,
+	}
+	if row.CurrentPrice.Valid {
+		v := row.CurrentPrice.Decimal
+		out.CurrentPrice = &v
+	}
+	if row.PriceFetchedAt.Valid {
+		t := row.PriceFetchedAt.Time
+		out.PriceFetchedAt = &t
+	}
+	return out
 }

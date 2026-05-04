@@ -612,7 +612,7 @@ func toOapiAccountDetail(a account.Account, positions []position.EnrichedPositio
 }
 
 func toOapiInstrument(i instrument.Instrument) oapi.Instrument {
-	return oapi.Instrument{
+	out := oapi.Instrument{
 		Id:         i.ID,
 		Ticker:     i.Ticker,
 		AssetClass: oapi.AssetClass(i.AssetClass),
@@ -621,6 +621,15 @@ func toOapiInstrument(i instrument.Instrument) oapi.Instrument {
 		CreatedAt:  i.CreatedAt,
 		UpdatedAt:  i.UpdatedAt,
 	}
+	if i.CurrentPrice != nil {
+		s := i.CurrentPrice.String()
+		out.CurrentPrice = &s
+	}
+	if i.PriceFetchedAt != nil {
+		t := *i.PriceFetchedAt
+		out.PriceUpdatedAt = &t
+	}
+	return out
 }
 
 func toOapiPosition(p position.Position, inst instrument.Instrument) oapi.Position {

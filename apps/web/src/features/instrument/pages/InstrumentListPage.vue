@@ -4,6 +4,7 @@ import { useListInstruments } from "@/api/generated";
 import { AssetClass } from "@/api/generated/model/assetClass";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { formatNumber } from "@/lib/formatters";
 import {
   Table,
   TableHeader,
@@ -144,6 +145,7 @@ function nextPage() {
             <TableHead>Название</TableHead>
             <TableHead>Класс</TableHead>
             <TableHead>Валюта</TableHead>
+            <TableHead class="text-right">Цена</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -158,6 +160,10 @@ function nextPage() {
               </span>
             </TableCell>
             <TableCell class="num">{{ i.currency }}</TableCell>
+            <TableCell class="num text-right">
+              <span v-if="i.currentPrice">{{ formatNumber(i.currentPrice, 2) }}</span>
+              <span v-else class="text-muted-foreground opacity-50">—</span>
+            </TableCell>
           </TableRow>
         </TableBody>
       </Table>

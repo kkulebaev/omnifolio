@@ -21,12 +21,16 @@ ORDER BY (LOWER(ticker) = LOWER($1)) DESC, ticker
 LIMIT 20;
 
 -- name: ListInstruments :many
-SELECT id, ticker, asset_class, currency, name, created_at, updated_at
-FROM instruments
+SELECT
+    i.id, i.ticker, i.asset_class, i.currency, i.name, i.created_at, i.updated_at,
+    pr.price        AS current_price,
+    pr.fetched_at   AS price_fetched_at
+FROM instruments i
+LEFT JOIN prices pr ON pr.instrument_id = i.id
 WHERE
-    (@q::text = '' OR ticker ILIKE '%' || @q || '%' OR name ILIKE '%' || @q || '%')
-    AND (@asset_class::text = '' OR asset_class = @asset_class)
-ORDER BY ticker
+    (@q::text = '' OR i.ticker ILIKE '%' || @q || '%' OR i.name ILIKE '%' || @q || '%')
+    AND (@asset_class::text = '' OR i.asset_class = @asset_class)
+ORDER BY i.ticker
 LIMIT @lim OFFSET @off;
 
 -- name: CountInstruments :one

@@ -9,6 +9,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const countInstruments = `-- name: CountInstruments :one
@@ -114,12 +116,16 @@ func (q *Queries) GetInstrumentByTickerAssetClass(ctx context.Context, arg GetIn
 }
 
 const listInstruments = `-- name: ListInstruments :many
-SELECT id, ticker, asset_class, currency, name, created_at, updated_at
-FROM instruments
+SELECT
+    i.id, i.ticker, i.asset_class, i.currency, i.name, i.created_at, i.updated_at,
+    pr.price        AS current_price,
+    pr.fetched_at   AS price_fetched_at
+FROM instruments i
+LEFT JOIN prices pr ON pr.instrument_id = i.id
 WHERE
-    ($1::text = '' OR ticker ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
-    AND ($2::text = '' OR asset_class = $2)
-ORDER BY ticker
+    ($1::text = '' OR i.ticker ILIKE '%' || $1 || '%' OR i.name ILIKE '%' || $1 || '%')
+    AND ($2::text = '' OR i.asset_class = $2)
+ORDER BY i.ticker
 LIMIT $4 OFFSET $3
 `
 
@@ -130,7 +136,19 @@ type ListInstrumentsParams struct {
 	Lim        int32
 }
 
-func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams) ([]Instrument, error) {
+type ListInstrumentsRow struct {
+	ID             uuid.UUID
+	Ticker         string
+	AssetClass     string
+	Currency       string
+	Name           string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	CurrentPrice   decimal.NullDecimal
+	PriceFetchedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams) ([]ListInstrumentsRow, error) {
 	rows, err := q.db.Query(ctx, listInstruments,
 		arg.Q,
 		arg.AssetClass,
@@ -141,9 +159,9 @@ func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Instrument
+	var items []ListInstrumentsRow
 	for rows.Next() {
-		var i Instrument
+		var i ListInstrumentsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Ticker,
@@ -152,6 +170,8 @@ func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams
 			&i.Name,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CurrentPrice,
+			&i.PriceFetchedAt,
 		); err != nil {
 			return nil, err
 		}

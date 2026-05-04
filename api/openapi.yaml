@@ -662,6 +662,14 @@ components:
         updatedAt:
           type: string
           format: date-time
+        currentPrice:
+          type: string
+          description: Last known price as decimal string. Omitted if no price recorded yet.
+          example: "123.45"
+        priceUpdatedAt:
+          type: string
+          format: date-time
+          description: When currentPrice was last fetched. Omitted if no price recorded yet.
 
     InstrumentList:
       type: object

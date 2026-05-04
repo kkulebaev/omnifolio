@@ -16,4 +16,8 @@ export interface Instrument {
   name: string;
   createdAt: string;
   updatedAt: string;
+  /** Last known price as decimal string. Omitted if no price recorded yet. */
+  currentPrice?: string;
+  /** When currentPrice was last fetched. Omitted if no price recorded yet. */
+  priceUpdatedAt?: string;
 }
