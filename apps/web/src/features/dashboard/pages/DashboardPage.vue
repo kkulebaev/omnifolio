@@ -276,7 +276,7 @@ function pluralAccounts(n: number): string {
   </div>
   <template v-else>
     <div
-      class="grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr] border-b border-border"
+      class="sticky top-0 z-10 bg-background grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr] border-b border-border"
     >
       <div class="px-[24px] py-[20px] border-r border-border">
         <div class="uppercase text-[10.5px] text-muted-foreground tracking-[0.08em] mb-[6px]">
