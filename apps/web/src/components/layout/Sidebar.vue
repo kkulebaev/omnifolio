@@ -82,7 +82,7 @@ const userInitials = computed(() => {
       </span>
     </div>
 
-    <nav class="flex flex-col gap-px">
+    <nav class="flex flex-col gap-1">
       <RouterLink
         v-for="n in navItems.filter((i) => i.enabled)"
         :key="n.id"
