@@ -84,8 +84,7 @@ function statusLabel(s: string | null | undefined): string {
 </script>
 
 <template>
-  <!-- TODO(tw-arb): p-[22px] -->
-  <div class="space-y-6 p-[22px]">
+  <div class="space-y-6 p-6">
     <div class="flex items-center gap-3">
       <RouterLink to="/accounts" class="text-sm opacity-60 hover:underline">←</RouterLink>
       <h1 v-if="account.data.value" class="text-2xl font-semibold">

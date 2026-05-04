@@ -17,8 +17,7 @@ const dialogOpen = ref(false);
 </script>
 
 <template>
-  <!-- TODO(tw-arb): p-[22px] -->
-  <div class="space-y-6 p-[22px]">
+  <div class="space-y-6 p-6">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-semibold">Аккаунты</h1>
       <Button @click="dialogOpen = true">Создать аккаунт</Button>
