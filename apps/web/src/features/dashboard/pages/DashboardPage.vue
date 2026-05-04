@@ -10,8 +10,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "radix-vue";
-import { ChevronDown, Check } from "lucide-vue-next";
+import { ChevronDown, Check, Layers } from "lucide-vue-next";
 import { useGetPortfolio } from "@/api/generated";
+import type { PortfolioPosition } from "@/api/generated/model/portfolioPosition";
 import { useUiStore } from "@/stores/ui";
 import {
   formatCompact,
@@ -92,8 +93,72 @@ const filtered = computed(() =>
   }),
 );
 
+type DisplayPosition = PortfolioPosition & {
+  accountCount: number;
+  isMerged: boolean;
+};
+
+const merged = computed<DisplayPosition[]>(() => {
+  if (!ui.mergePositions) {
+    return filtered.value.map((p) => ({
+      ...p,
+      accountCount: 1,
+      isMerged: false,
+    }));
+  }
+  const groups = new Map<string, PortfolioPosition[]>();
+  for (const p of filtered.value) {
+    const key = p.instrumentId;
+    const arr = groups.get(key);
+    if (arr) arr.push(p);
+    else groups.set(key, [p]);
+  }
+  const out: DisplayPosition[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      out.push({ ...group[0], accountCount: 1, isMerged: false });
+      continue;
+    }
+    const head = group[0];
+    const qty = group.reduce((s, p) => s + Number(p.quantity ?? 0), 0);
+    const valueNative = group.reduce(
+      (s, p) => s + Number(p.valueNative ?? 0),
+      0,
+    );
+    const valueDisplay = group.reduce(
+      (s, p) => s + Number(p.valueDisplay ?? 0),
+      0,
+    );
+    const oldestFetchedAt = group.reduce<string | null>((acc, p) => {
+      if (!p.priceFetchedAt) return acc;
+      if (!acc) return p.priceFetchedAt;
+      return new Date(p.priceFetchedAt).getTime() <
+        new Date(acc).getTime()
+        ? p.priceFetchedAt
+        : acc;
+    }, null);
+    out.push({
+      accountId: group.map((p) => p.accountId).join(","),
+      accountName: "",
+      instrumentId: head.instrumentId,
+      ticker: head.ticker,
+      assetClass: head.assetClass,
+      currency: head.currency,
+      quantity: String(qty),
+      price: head.price ?? null,
+      valueNative: String(valueNative),
+      valueDisplay: String(valueDisplay),
+      priceFetchedAt: oldestFetchedAt,
+      priceStale: group.some((p) => p.priceStale),
+      accountCount: group.length,
+      isMerged: true,
+    });
+  }
+  return out;
+});
+
 const positions = computed(() =>
-  [...filtered.value].sort(
+  [...merged.value].sort(
     (a, b) => Number(b.valueDisplay ?? 0) - Number(a.valueDisplay ?? 0),
   ),
 );
@@ -190,6 +255,14 @@ function shareOf(value: string | null | undefined): number {
 function valueDisplaySuffix(): string {
   return ui.displayCurrency === "RUB" ? "₽" : ui.displayCurrency;
 }
+
+function pluralAccounts(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "аккаунт";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "аккаунта";
+  return "аккаунтов";
+}
 </script>
 
 <template>
@@ -253,6 +326,18 @@ function valueDisplaySuffix(): string {
           </span>
         </h2>
         <div class="flex gap-[6px] text-[11px]">
+          <button
+            type="button"
+            @click="ui.toggleMergePositions()"
+            :aria-pressed="ui.mergePositions"
+            :title="ui.mergePositions ? 'Свернуты по тикеру' : 'По аккаунтам'"
+            class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel inline-flex items-center gap-[4px] hover:bg-soft transition-colors outline-none"
+            :class="ui.mergePositions ? 'text-foreground bg-soft' : 'text-muted-foreground'"
+          >
+            <Layers class="w-[10px] h-[10px] opacity-70" />
+            {{ ui.mergePositions ? 'Свёрнуто' : 'По аккаунтам' }}
+          </button>
+
           <DropdownMenuRoot>
             <DropdownMenuTrigger
               class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel inline-flex items-center gap-[4px] hover:bg-soft transition-colors outline-none data-[state=open]:bg-soft"
@@ -387,7 +472,7 @@ function valueDisplaySuffix(): string {
           <tbody>
             <tr
               v-for="(p, i) in positions"
-              :key="`${p.accountId}/${p.instrumentId}`"
+              :key="p.isMerged ? `merged/${p.instrumentId}` : `${p.accountId}/${p.instrumentId}`"
               :class="i ? 'border-t border-border' : ''"
             >
               <td class="num px-[12px] py-[6px] font-semibold text-[11.5px]">{{ p.ticker }}</td>
@@ -397,7 +482,13 @@ function valueDisplaySuffix(): string {
                   :class="CLASS_BADGE[p.assetClass]?.tintClass ?? 'bg-soft'"
                 >{{ CLASS_BADGE[p.assetClass]?.label ?? p.assetClass }}</span>
               </td>
-              <td class="px-[12px] py-[6px] text-muted-foreground text-[11.5px]">{{ p.accountName }}</td>
+              <td class="px-[12px] py-[6px] text-muted-foreground text-[11.5px]">
+                <span v-if="p.isMerged" class="inline-flex items-center gap-[4px]">
+                  <Layers class="w-[10px] h-[10px] opacity-60" />
+                  {{ p.accountCount }} {{ pluralAccounts(p.accountCount) }}
+                </span>
+                <span v-else>{{ p.accountName }}</span>
+              </td>
               <td class="num px-[12px] py-[6px] text-right text-[11.5px]">{{ formatQuantity(p.quantity) }}</td>
               <td class="num px-[12px] py-[6px] text-right text-muted-foreground text-[11.5px]">
                 <span v-if="p.price">{{ formatNumber(p.price, 2) }}</span>

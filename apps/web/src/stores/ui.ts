@@ -7,6 +7,7 @@ export type DisplayCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 const LS_CURRENCY = "omnifolio:displayCurrency";
 const LS_THEME = "omnifolio:theme";
 const LS_PRIVACY = "omnifolio:privacy";
+const LS_MERGE_POSITIONS = "omnifolio:mergePositions";
 
 export const useUiStore = defineStore("ui", () => {
   const stored = (localStorage.getItem(LS_CURRENCY) as DisplayCurrency | null) ?? "RUB";
@@ -46,12 +47,24 @@ export const useUiStore = defineStore("ui", () => {
     privacy.value = !privacy.value;
   }
 
+  const mergePositions = ref<boolean>(
+    localStorage.getItem(LS_MERGE_POSITIONS) === "1",
+  );
+  watch(mergePositions, (v) => {
+    localStorage.setItem(LS_MERGE_POSITIONS, v ? "1" : "0");
+  });
+  function toggleMergePositions() {
+    mergePositions.value = !mergePositions.value;
+  }
+
   return {
     displayCurrency,
     theme,
     toggleTheme,
     privacy,
     togglePrivacy,
+    mergePositions,
+    toggleMergePositions,
     SUPPORTED_CURRENCIES,
   };
 });
