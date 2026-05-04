@@ -186,12 +186,13 @@ const accountCount = computed(() => {
   return set.size;
 });
 
-const SUMMARY_CLASSES: AssetClass[] = ["ru_stock", "us_stock", "crypto"];
+const SUMMARY_CLASSES: AssetClass[] = ["ru_stock", "us_stock", "crypto", "cash"];
 
 const CLASS_LABEL: Record<AssetClass, string> = {
   ru_stock: "Российские акции",
   us_stock: "Американские акции",
   crypto: "Криптовалюты",
+  cash: "Кэш",
   ru_bond: "Российские облигации",
   ru_etf: "Российские ETF",
   us_etf: "Американские ETF",
@@ -201,6 +202,7 @@ const CLASS_BADGE: Record<AssetClass, { label: string; tintClass: string }> = {
   ru_stock: { label: "ru акция", tintClass: "bg-[rgba(201,100,66,0.12)]" },
   us_stock: { label: "us акция", tintClass: "bg-[rgba(90,130,180,0.14)]" },
   crypto: { label: "crypto", tintClass: "bg-[rgba(120,150,90,0.14)]" },
+  cash: { label: "cash", tintClass: "bg-[rgba(150,150,150,0.14)]" },
   ru_bond: { label: "ru обл", tintClass: "bg-[rgba(140,120,180,0.14)]" },
   ru_etf: { label: "ru etf", tintClass: "bg-[rgba(180,150,90,0.14)]" },
   us_etf: { label: "us etf", tintClass: "bg-[rgba(70,140,160,0.14)]" },
@@ -267,7 +269,7 @@ function pluralAccounts(n: number): string {
 </script>
 
 <template>
-  <!-- TODO(tw-arb): spacing p-[24px] px-[12px|22px|24px|7px|8px] py-[2px|6px|7px|20px|48px] pt-[16px] pb-[28px] mt-[6px|8px] mb-[6px|8px|10px] ml-[6px] gap-[6px] | size w-[40px] min-w-[32px] h-[2px] h-[3px] | radius rounded-[1px|2px|3px|6px] | text text-[10px|10.5px|11px|11.5px|12px|12.5px|20px|30px] tracking-[-0.015em|-0.025em|0.05em|0.08em] leading-[1.05] | grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr] | color text-[hsl(28_80%_52%)] bg-[rgba(...)]×6 in CLASS_BADGE -->
+  <!-- TODO(tw-arb): spacing p-[24px] px-[12px|22px|24px|7px|8px] py-[2px|6px|7px|20px|48px] pt-[16px] pb-[28px] mt-[6px|8px] mb-[6px|8px|10px] ml-[6px] gap-[6px] | size w-[40px] min-w-[32px] h-[2px] h-[3px] | radius rounded-[1px|2px|3px|6px] | text text-[10px|10.5px|11px|11.5px|12px|12.5px|20px|30px] tracking-[-0.015em|-0.025em|0.05em|0.08em] leading-[1.05] | grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr] | color text-[hsl(28_80%_52%)] bg-[rgba(...)]×7 in CLASS_BADGE -->
   <div v-if="portfolio.isLoading.value" class="p-[24px] opacity-60">
     Загрузка…
   </div>
@@ -276,7 +278,7 @@ function pluralAccounts(n: number): string {
   </div>
   <template v-else>
     <div
-      class="sticky top-0 z-10 bg-background grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr] border-b border-border"
+      class="sticky top-0 z-10 bg-background grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr] border-b border-border"
     >
       <div class="px-[24px] py-[20px] border-r border-border">
         <div class="uppercase text-[10.5px] text-muted-foreground tracking-[0.08em] mb-[6px]">

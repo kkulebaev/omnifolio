@@ -617,7 +617,7 @@ components:
 
     AssetClass:
       type: string
-      enum: [ru_stock, ru_bond, ru_etf, us_stock, us_etf, crypto]
+      enum: [ru_stock, ru_bond, ru_etf, us_stock, us_etf, crypto, cash]
 
     Instrument:
       type: object

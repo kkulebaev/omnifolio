@@ -70,6 +70,7 @@ const CLASS_LABEL: Record<AssetClass, string> = {
   ru_etf: "ru etf",
   us_etf: "us etf",
   crypto: "crypto",
+  cash: "cash",
 };
 
 const FILTERS: { value: AssetClass | ""; label: string }[] = [
