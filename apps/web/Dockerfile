@@ -10,7 +10,7 @@ COPY api/openapi.yaml api/openapi.yaml
 COPY apps/web ./apps/web
 
 WORKDIR /work/apps/web
-RUN pnpm exec orval && pnpm build
+RUN pnpm build
 
 FROM caddy:2-alpine
 COPY --from=build /work/apps/web/dist /usr/share/caddy
