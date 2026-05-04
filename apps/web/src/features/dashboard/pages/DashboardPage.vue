@@ -1,5 +1,16 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import {
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+  DropdownMenuPortal,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuItemIndicator,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "radix-vue";
+import { ChevronDown, Check } from "lucide-vue-next";
 import { useGetPortfolio } from "@/api/generated";
 import { useUiStore } from "@/stores/ui";
 import {
@@ -23,15 +34,91 @@ const portfolio = useGetPortfolio(
   },
 );
 
-const summary = computed(() => portfolio.data.value?.summary);
 const positionsRaw = computed(() => portfolio.data.value?.positions ?? []);
+
+const selectedClasses = ref<Set<AssetClass>>(new Set());
+const selectedAccounts = ref<Set<string>>(new Set());
+
+function toggleClass(c: AssetClass, on: boolean) {
+  const next = new Set(selectedClasses.value);
+  if (on) next.add(c);
+  else next.delete(c);
+  selectedClasses.value = next;
+}
+function toggleAccount(id: string, on: boolean) {
+  const next = new Set(selectedAccounts.value);
+  if (on) next.add(id);
+  else next.delete(id);
+  selectedAccounts.value = next;
+}
+function clearClasses() {
+  selectedClasses.value = new Set();
+}
+function clearAccounts() {
+  selectedAccounts.value = new Set();
+}
+function clearAll() {
+  clearClasses();
+  clearAccounts();
+}
+
+const availableClasses = computed(() => {
+  const set = new Set<AssetClass>();
+  for (const p of positionsRaw.value) set.add(p.assetClass);
+  return Array.from(set);
+});
+
+const availableAccounts = computed(() => {
+  const map = new Map<string, string>();
+  for (const p of positionsRaw.value) map.set(p.accountId, p.accountName);
+  return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+});
+
+const filtered = computed(() =>
+  positionsRaw.value.filter((p) => {
+    if (
+      selectedClasses.value.size > 0 &&
+      !selectedClasses.value.has(p.assetClass)
+    )
+      return false;
+    if (
+      selectedAccounts.value.size > 0 &&
+      !selectedAccounts.value.has(p.accountId)
+    )
+      return false;
+    return true;
+  }),
+);
+
 const positions = computed(() =>
-  [...positionsRaw.value].sort(
+  [...filtered.value].sort(
     (a, b) => Number(b.valueDisplay ?? 0) - Number(a.valueDisplay ?? 0),
   ),
 );
 
-const grandTotal = computed(() => Number(summary.value?.grandTotal ?? 0) || 0);
+const grandTotal = computed(() =>
+  positions.value.reduce(
+    (acc, p) => acc + (Number(p.valueDisplay ?? 0) || 0),
+    0,
+  ),
+);
+
+const byAssetClass = computed(() => {
+  const m: Partial<Record<AssetClass, number>> = {};
+  for (const p of positions.value) {
+    m[p.assetClass] =
+      (m[p.assetClass] ?? 0) + (Number(p.valueDisplay ?? 0) || 0);
+  }
+  return m;
+});
+
+const accountCount = computed(() => {
+  const set = new Set<string>();
+  for (const p of positions.value) set.add(p.accountId);
+  return set.size;
+});
 
 const SUMMARY_CLASSES: AssetClass[] = ["ru_stock", "us_stock", "crypto"];
 
@@ -55,7 +142,7 @@ const CLASS_BADGE: Record<AssetClass, { label: string; tintClass: string }> = {
 
 const summaryCards = computed(() =>
   SUMMARY_CLASSES.map((k) => {
-    const value = Number(summary.value?.byAssetClass?.[k] ?? 0) || 0;
+    const value = byAssetClass.value[k] ?? 0;
     return {
       key: k,
       label: CLASS_LABEL[k],
@@ -65,9 +152,25 @@ const summaryCards = computed(() =>
   }),
 );
 
-const accountCount = computed(
-  () => Object.keys(summary.value?.byAccount ?? {}).length,
-);
+const classFilterLabel = computed(() => {
+  const n = selectedClasses.value.size;
+  if (n === 0) return "Все классы";
+  if (n === 1) {
+    const c = selectedClasses.value.values().next().value as AssetClass;
+    return CLASS_BADGE[c]?.label ?? c;
+  }
+  return `Классы: ${n}`;
+});
+
+const accountFilterLabel = computed(() => {
+  const n = selectedAccounts.value.size;
+  if (n === 0) return "Все аккаунты";
+  if (n === 1) {
+    const id = selectedAccounts.value.values().next().value as string;
+    return availableAccounts.value.find((a) => a.id === id)?.name ?? "1";
+  }
+  return `Аккаунты: ${n}`;
+});
 
 function priceAgeClass(d?: string | null, stale?: boolean): string {
   if (!d || stale) return "text-neg";
@@ -149,14 +252,101 @@ function valueDisplaySuffix(): string {
             {{ positions.length }}
           </span>
         </h2>
-        <div class="flex gap-[6px] text-[11px] text-muted-foreground">
-          <span class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel">Все классы</span>
-          <span class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel">Все аккаунты</span>
+        <div class="flex gap-[6px] text-[11px]">
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger
+              class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel inline-flex items-center gap-[4px] hover:bg-soft transition-colors outline-none data-[state=open]:bg-soft"
+              :class="selectedClasses.size > 0 ? 'text-foreground' : 'text-muted-foreground'"
+            >
+              {{ classFilterLabel }}
+              <ChevronDown class="w-[10px] h-[10px] opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="4"
+                class="z-50 min-w-[200px] rounded-[6px] border border-border bg-panel p-[4px] shadow-md text-[12px]"
+              >
+                <template v-if="availableClasses.length === 0">
+                  <div class="px-[8px] py-[4px] text-muted-foreground">
+                    Нет классов
+                  </div>
+                </template>
+                <DropdownMenuCheckboxItem
+                  v-for="c in availableClasses"
+                  :key="c"
+                  :checked="selectedClasses.has(c)"
+                  @update:checked="(v) => toggleClass(c, v)"
+                  @select.prevent
+                  class="relative flex items-center gap-[8px] pl-[24px] pr-[8px] py-[4px] rounded-[3px] cursor-pointer outline-none data-[highlighted]:bg-soft"
+                >
+                  <DropdownMenuItemIndicator class="absolute left-[6px] inline-flex items-center">
+                    <Check class="w-[12px] h-[12px]" />
+                  </DropdownMenuItemIndicator>
+                  <span
+                    class="num uppercase text-[10px] px-[7px] py-[2px] rounded-[3px] tracking-[0.05em]"
+                    :class="CLASS_BADGE[c]?.tintClass ?? 'bg-soft'"
+                  >{{ CLASS_BADGE[c]?.label ?? c }}</span>
+                  <span class="text-muted-foreground text-[11px]">{{ CLASS_LABEL[c] ?? c }}</span>
+                </DropdownMenuCheckboxItem>
+                <template v-if="selectedClasses.size > 0">
+                  <DropdownMenuSeparator class="my-[4px] h-[1px] bg-border" />
+                  <DropdownMenuItem
+                    @select="clearClasses"
+                    class="px-[8px] py-[4px] rounded-[3px] cursor-pointer outline-none text-muted-foreground data-[highlighted]:bg-soft"
+                  >Сбросить</DropdownMenuItem>
+                </template>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
+
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger
+              class="px-[8px] py-[2px] rounded-[3px] border border-border bg-panel inline-flex items-center gap-[4px] hover:bg-soft transition-colors outline-none data-[state=open]:bg-soft"
+              :class="selectedAccounts.size > 0 ? 'text-foreground' : 'text-muted-foreground'"
+            >
+              {{ accountFilterLabel }}
+              <ChevronDown class="w-[10px] h-[10px] opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="4"
+                class="z-50 min-w-[200px] rounded-[6px] border border-border bg-panel p-[4px] shadow-md text-[12px]"
+              >
+                <template v-if="availableAccounts.length === 0">
+                  <div class="px-[8px] py-[4px] text-muted-foreground">
+                    Нет аккаунтов
+                  </div>
+                </template>
+                <DropdownMenuCheckboxItem
+                  v-for="a in availableAccounts"
+                  :key="a.id"
+                  :checked="selectedAccounts.has(a.id)"
+                  @update:checked="(v) => toggleAccount(a.id, v)"
+                  @select.prevent
+                  class="relative flex items-center gap-[8px] pl-[24px] pr-[8px] py-[4px] rounded-[3px] cursor-pointer outline-none data-[highlighted]:bg-soft"
+                >
+                  <DropdownMenuItemIndicator class="absolute left-[6px] inline-flex items-center">
+                    <Check class="w-[12px] h-[12px]" />
+                  </DropdownMenuItemIndicator>
+                  <span>{{ a.name }}</span>
+                </DropdownMenuCheckboxItem>
+                <template v-if="selectedAccounts.size > 0">
+                  <DropdownMenuSeparator class="my-[4px] h-[1px] bg-border" />
+                  <DropdownMenuItem
+                    @select="clearAccounts"
+                    class="px-[8px] py-[4px] rounded-[3px] cursor-pointer outline-none text-muted-foreground data-[highlighted]:bg-soft"
+                  >Сбросить</DropdownMenuItem>
+                </template>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </div>
 
       <div
-        v-if="positions.length === 0"
+        v-if="positions.length === 0 && positionsRaw.length === 0"
         class="border border-border rounded-[6px] bg-panel px-[24px] py-[48px] text-center"
       >
         <p class="text-[12.5px] text-muted-foreground mt-0 mx-0 mb-[8px]">Нет позиций</p>
@@ -165,6 +355,18 @@ function valueDisplaySuffix(): string {
           <RouterLink to="/accounts" class="text-accent underline">Аккаунты</RouterLink>
           и добавь первую.
         </p>
+      </div>
+
+      <div
+        v-else-if="positions.length === 0"
+        class="border border-border rounded-[6px] bg-panel px-[24px] py-[48px] text-center"
+      >
+        <p class="text-[12.5px] text-muted-foreground mt-0 mx-0 mb-[8px]">Нет позиций под выбранные фильтры</p>
+        <button
+          type="button"
+          class="text-[12px] text-accent underline cursor-pointer bg-transparent border-none p-0"
+          @click="clearAll"
+        >Сбросить фильтры</button>
       </div>
 
       <div
