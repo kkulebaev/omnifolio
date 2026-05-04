@@ -182,7 +182,7 @@ const byAssetClass = computed(() => {
 
 const accountCount = computed(() => {
   const set = new Set<string>();
-  for (const p of positions.value) set.add(p.accountId);
+  for (const p of filtered.value) set.add(p.accountId);
   return set.size;
 });
 
