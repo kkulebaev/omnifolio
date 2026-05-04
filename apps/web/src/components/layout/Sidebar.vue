@@ -5,16 +5,22 @@ import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
 import { useListAccounts, useGetPortfolio } from "@/api/generated";
 import type { Account } from "@/api/generated/model/account";
+import {
+  LayoutDashboard,
+  Wallet,
+  CandlestickChart,
+  Settings,
+} from "lucide-vue-next";
 
 const route = useRoute();
 const auth = useAuthStore();
 const ui = useUiStore();
 
 const navItems = [
-  { id: "dash", label: "Дэшборд", icon: "◐", to: "/", enabled: true },
-  { id: "acc", label: "Аккаунты", icon: "▤", to: "/accounts", enabled: true },
-  { id: "ins", label: "Инструменты", icon: "⌗", to: "/instruments", enabled: true },
-  { id: "set", label: "Настройки", icon: "⚙", to: "/settings", enabled: true },
+  { id: "dash", label: "Дэшборд", icon: LayoutDashboard, to: "/", enabled: true },
+  { id: "acc", label: "Аккаунты", icon: Wallet, to: "/accounts", enabled: true },
+  { id: "ins", label: "Инструменты", icon: CandlestickChart, to: "/instruments", enabled: true },
+  { id: "set", label: "Настройки", icon: Settings, to: "/settings", enabled: true },
 ];
 
 function isActive(to: string): boolean {
@@ -89,10 +95,13 @@ const userInitials = computed(() => {
           class="flex items-center cursor-pointer text-left border-none px-[8px] py-[6px] rounded-[5px] text-[12.5px] gap-[9px] font-[inherit]"
           :class="isActive(n.to) ? 'bg-soft text-foreground font-medium' : 'bg-transparent text-muted-foreground font-normal'"
         >
-          <span
-            class="w-[14px] text-[11px]"
+          <component
+            :is="n.icon"
+            :size="16"
+            :stroke-width="1.75"
+            class="shrink-0"
             :class="isActive(n.to) ? 'text-accent' : 'text-subtle'"
-          >{{ n.icon }}</span>
+          />
           {{ n.label }}
         </button>
       </RouterLink>
@@ -102,7 +111,7 @@ const userInitials = computed(() => {
         disabled
         class="flex items-center text-left bg-transparent border-none text-subtle px-[8px] py-[6px] rounded-[5px] text-[12.5px] gap-[9px] font-[inherit] cursor-not-allowed"
       >
-        <span class="w-[14px] text-[11px]">{{ n.icon }}</span>
+        <component :is="n.icon" :size="16" :stroke-width="1.75" class="shrink-0" />
         {{ n.label }}
       </button>
     </nav>
