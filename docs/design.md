@@ -748,7 +748,7 @@ apps/web/src/
 - **NULL**: `emit_pointers_for_null_types: true` →
   `LastSyncedAt *time.Time` вместо `pgtype.Timestamptz`.
 - **Generation**: `sqlc` бинарь установлен в Dockerfile.dev
-  (`go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0`). Запуск через
+  (`go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1`). Запуск через
   Makefile: `cd apps/api && sqlc generate`.
 - **Naming clash**: sqlc генерит `internal/storage/db.go` со своим `DBTX`
   interface и `Queries`. Наш текущий `db.go` (с `NewPool`) переименован
@@ -1183,7 +1183,7 @@ Mapper в `internal/server/handlers.go`:
 
 - **Клиент**: **REST API** (`https://invest-public-api.tinkoff.ru/rest/...`),
   написанный руками поверх `net/http` + `encoding/json`. Без официального SDK
-  (он тянет grpc-стек, требующий Go 1.24+; конфликтует с нашим pinned 1.23
+  (он тянет grpc-стек; не используем — REST покрывает нужные методы
   + долгий cold-cache build на cold network). REST endpoint-ы покрывают все
   нужные методы (UsersService.GetAccounts, OperationsService.GetPortfolio,
   MarketDataService.GetLastPrices, InstrumentsService.GetInstrumentBy) и

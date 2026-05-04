@@ -1,9 +1,9 @@
-FROM golang:1.23-alpine
+FROM golang:1.26-alpine
 
 RUN apk add --no-cache git curl \
-    && go install github.com/air-verse/air@v1.61.5 \
-    && go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0 \
-    && go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
+    && go install github.com/air-verse/air@v1.65.1 \
+    && go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 \
+    && go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
 
 WORKDIR /workspace/apps/api
 

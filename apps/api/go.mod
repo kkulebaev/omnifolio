@@ -1,6 +1,6 @@
 module github.com/kkulebaev/omnifolio/api
 
-go 1.23
+go 1.26
 
 require (
 	github.com/alexedwards/argon2id v1.0.0

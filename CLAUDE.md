@@ -9,7 +9,7 @@
 
 ## Стек
 
-- **Backend**: Go 1.23 (chi, sqlc, pgx, goose, argon2id, AES-GCM, robfig/cron, slog).
+- **Backend**: Go 1.26 (chi, sqlc, pgx, goose, argon2id, AES-GCM, robfig/cron, slog).
 - **Frontend**: Vue 3 + Vite + Pinia + vue-router + TanStack Query + orval + Tailwind v4 + radix-vue + vee-validate/zod.
 - **DB**: Postgres 16.
 - **Контракт**: OpenAPI как single source of truth — `api/openapi.yaml`.
