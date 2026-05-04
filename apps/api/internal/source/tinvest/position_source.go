@@ -129,10 +129,12 @@ func (p *PositionSource) ResolveInstrument(ctx context.Context, creds []byte, fi
 		Name:       inst.Name,
 	}
 	if assetClass == "cash" {
-		// Currency instruments use ticker like "RUB000UTSTOM" — we want "RUB" / "USD" etc.
-		seed.Ticker = strNormalizeCurrency(currency)
+		// Tinkoff's `currency` field on a currency instrument is the QUOTE currency
+		// (RUB for USD/RUB), not the base — derive the base from the ticker prefix
+		// (USD000UTSTOM, EUR_RUB__TOM, CNYRUB_TOM, ...).
+		seed.Ticker = baseCurrencyFromTicker(inst.Ticker)
 		if seed.Ticker == "" {
-			seed.Ticker = inst.Ticker
+			seed.Ticker = strNormalizeCurrency(currency)
 		}
 		seed.Currency = seed.Ticker
 	}
@@ -150,6 +152,21 @@ func strNormalizeCurrency(c string) string {
 		out[i] = ch
 	}
 	return string(out)
+}
+
+// baseCurrencyFromTicker extracts the base 3-letter code from a Tinkoff currency
+// ticker. Returns empty if the ticker doesn't start with three ASCII letters.
+func baseCurrencyFromTicker(ticker string) string {
+	if len(ticker) < 3 {
+		return ""
+	}
+	code := strNormalizeCurrency(ticker[:3])
+	for i := 0; i < 3; i++ {
+		if code[i] < 'A' || code[i] > 'Z' {
+			return ""
+		}
+	}
+	return code
 }
 
 // unmarshalLenient parses credentials without enforcing TInvestAccountID — used
