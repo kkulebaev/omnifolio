@@ -33,8 +33,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <!-- TODO(tw-arb): p-[22px] max-w-[720px] grid-cols-[160px_1fr] | size w-[36px] h-[18px] w-[14px] h-[14px] top-[2px] left-[2px] left-[20px] | radius rounded-[3px|4px|9px] | text text-[11px|12px|12.5px] | misc shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[left] -->
-  <div class="space-y-6 p-[22px] max-w-[720px]">
+  <div class="space-y-6 p-6 max-w-3xl">
     <div>
       <h1 class="text-2xl font-semibold">Настройки</h1>
       <p class="text-sm text-muted-foreground mt-1">
@@ -48,23 +47,25 @@ async function handleLogout() {
         <CardDescription>Информация об учётной записи</CardDescription>
       </CardHeader>
       <CardContent class="space-y-3">
-        <div
-          v-if="auth.user"
-          class="grid grid-cols-[160px_1fr] gap-y-2 text-sm items-center"
-        >
-          <span class="text-muted-foreground">Email</span>
-          <span class="num">{{ auth.user.email }}</span>
-
-          <span class="text-muted-foreground">Валюта профиля</span>
-          <span class="num">{{ auth.user.displayCurrency }}</span>
-
-          <span class="text-muted-foreground">Создан</span>
-          <span>{{ formatDate(auth.user.createdAt) }}</span>
-
-          <span class="text-muted-foreground">ID</span>
-          <span class="num text-xs text-muted-foreground break-all">
-            {{ auth.user.id }}
-          </span>
+        <div v-if="auth.user" class="space-y-2 text-sm">
+          <div class="flex items-center">
+            <span class="w-40 text-muted-foreground shrink-0">Email</span>
+            <span class="num">{{ auth.user.email }}</span>
+          </div>
+          <div class="flex items-center">
+            <span class="w-40 text-muted-foreground shrink-0">Валюта профиля</span>
+            <span class="num">{{ auth.user.displayCurrency }}</span>
+          </div>
+          <div class="flex items-center">
+            <span class="w-40 text-muted-foreground shrink-0">Создан</span>
+            <span>{{ formatDate(auth.user.createdAt) }}</span>
+          </div>
+          <div class="flex items-center">
+            <span class="w-40 text-muted-foreground shrink-0">ID</span>
+            <span class="num text-xs text-muted-foreground break-all">
+              {{ auth.user.id }}
+            </span>
+          </div>
         </div>
         <p
           class="text-xs text-muted-foreground pt-3 mt-2 border-t border-border"
@@ -88,11 +89,11 @@ async function handleLogout() {
             </div>
           </div>
           <div
-            class="flex border border-border rounded-[4px] p-[1px] bg-panel shrink-0"
+            class="flex border border-border rounded-sm p-px bg-panel shrink-0"
           >
             <button
               type="button"
-              class="px-[10px] py-[4px] rounded-[3px] text-[12px] cursor-pointer font-[inherit] border-none"
+              class="px-2.5 py-1 rounded-sm text-xs cursor-pointer border-none"
               :class="
                 ui.theme === 'light'
                   ? 'bg-soft text-foreground font-medium'
@@ -104,7 +105,7 @@ async function handleLogout() {
             </button>
             <button
               type="button"
-              class="px-[10px] py-[4px] rounded-[3px] text-[12px] cursor-pointer font-[inherit] border-none"
+              class="px-2.5 py-1 rounded-sm text-xs cursor-pointer border-none"
               :class="
                 ui.theme === 'dark'
                   ? 'bg-soft text-foreground font-medium'
@@ -125,13 +126,13 @@ async function handleLogout() {
             </div>
           </div>
           <div
-            class="flex border border-border rounded-[4px] p-[1px] bg-panel shrink-0"
+            class="flex border border-border rounded-sm p-px bg-panel shrink-0"
           >
             <button
               v-for="c in ui.SUPPORTED_CURRENCIES"
               :key="c"
               type="button"
-              class="px-[10px] py-[4px] rounded-[3px] text-[12px] num cursor-pointer font-[inherit] border-none"
+              class="px-2.5 py-1 rounded-sm text-xs num cursor-pointer border-none"
               :class="
                 ui.displayCurrency === c
                   ? 'bg-soft text-foreground font-medium'
@@ -162,13 +163,13 @@ async function handleLogout() {
           <button
             type="button"
             :title="ui.privacy ? 'Показать суммы' : 'Скрыть суммы'"
-            class="relative inline-block w-[36px] h-[18px] rounded-[9px] transition-colors duration-150 cursor-pointer border-none p-0 shrink-0"
+            class="relative inline-block w-9 h-5 rounded-full transition-colors duration-150 cursor-pointer border-none p-0 shrink-0"
             :class="ui.privacy ? 'bg-accent' : 'bg-subtle'"
             @click="ui.togglePrivacy"
           >
             <span
-              class="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[left] duration-150"
-              :class="ui.privacy ? 'left-[20px]' : 'left-[2px]'"
+              class="absolute inset-y-0 my-auto w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-150"
+              :class="ui.privacy ? 'left-5' : 'left-0.5'"
             />
           </button>
         </div>
@@ -185,13 +186,13 @@ async function handleLogout() {
             :title="
               ui.mergePositions ? 'Не объединять' : 'Объединять позиции'
             "
-            class="relative inline-block w-[36px] h-[18px] rounded-[9px] transition-colors duration-150 cursor-pointer border-none p-0 shrink-0"
+            class="relative inline-block w-9 h-5 rounded-full transition-colors duration-150 cursor-pointer border-none p-0 shrink-0"
             :class="ui.mergePositions ? 'bg-accent' : 'bg-subtle'"
             @click="ui.toggleMergePositions"
           >
             <span
-              class="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[left] duration-150"
-              :class="ui.mergePositions ? 'left-[20px]' : 'left-[2px]'"
+              class="absolute inset-y-0 my-auto w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-150"
+              :class="ui.mergePositions ? 'left-5' : 'left-0.5'"
             />
           </button>
         </div>

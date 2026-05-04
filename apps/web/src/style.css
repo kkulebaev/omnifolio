@@ -74,6 +74,18 @@
   --color-ring: hsl(var(--ring));
   --color-pos: hsl(var(--pos));
   --color-neg: hsl(var(--neg));
+
+  /* Доп. палитра: статус-цвет несвежей цены и тинты бейджей по asset-классу.
+     Не зависят от light/dark. */
+  --color-stale: hsl(28 80% 52%);
+  --color-asset-ru-stock: hsl(15 56% 52% / 0.12);
+  --color-asset-us-stock: hsl(213 38% 53% / 0.14);
+  --color-asset-crypto: hsl(90 25% 47% / 0.14);
+  --color-asset-cash: hsl(0 0% 59% / 0.14);
+  --color-asset-ru-bond: hsl(260 29% 59% / 0.14);
+  --color-asset-ru-etf: hsl(40 38% 53% / 0.14);
+  --color-asset-us-etf: hsl(193 39% 45% / 0.14);
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 1px);
   --radius-sm: calc(var(--radius) - 2px);

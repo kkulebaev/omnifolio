@@ -92,7 +92,6 @@ function nextPage() {
 </script>
 
 <template>
-  <!-- TODO(tw-arb): text-[10px] -->
   <div class="space-y-4 p-6">
     <div class="flex items-center justify-between gap-4">
       <h1 class="text-2xl font-semibold">Инструменты</h1>
@@ -156,7 +155,7 @@ function nextPage() {
             <TableCell class="text-muted-foreground">{{ i.name }}</TableCell>
             <TableCell>
               <span
-                class="num uppercase text-[10px] px-2 py-0.5 rounded bg-soft tracking-wider"
+                class="num uppercase text-xs px-2 py-0.5 rounded bg-soft tracking-wider"
               >
                 {{ CLASS_LABEL[i.assetClass] ?? i.assetClass }}
               </span>
