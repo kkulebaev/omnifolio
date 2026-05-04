@@ -18,36 +18,15 @@ export class HttpError extends Error {
   }
 }
 
-export type FetcherArgs = {
-  url: string;
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  params?: Record<string, unknown>;
-  headers?: Record<string, string>;
-  data?: unknown;
-  signal?: AbortSignal;
-};
-
 const API_BASE = "/api";
 
-export const fetcher = async <T>(args: FetcherArgs): Promise<T> => {
-  const qs = args.params
-    ? "?" +
-      new URLSearchParams(
-        Object.entries(args.params)
-          .filter(([, v]) => v !== undefined && v !== null)
-          .map(([k, v]) => [k, String(v)]),
-      ).toString()
-    : "";
-
-  const res = await fetch(`${API_BASE}${args.url}${qs}`, {
-    method: args.method,
+export const fetcher = async <T>(
+  url: string,
+  options: RequestInit,
+): Promise<T> => {
+  const res = await fetch(`${API_BASE}${url}`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(args.headers ?? {}),
-    },
-    body: args.data !== undefined ? JSON.stringify(args.data) : undefined,
-    signal: args.signal,
+    ...options,
   });
 
   if (!res.ok) {

@@ -16,6 +16,9 @@ export default defineConfig({
           path: "src/api/mutator.ts",
           name: "fetcher",
         },
+        fetch: {
+          includeHttpResponseReturnType: false,
+        },
       },
     },
   },
