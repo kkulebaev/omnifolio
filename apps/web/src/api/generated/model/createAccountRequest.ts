@@ -10,7 +10,7 @@ import type { AccountType } from './accountType';
 /**
  * For type=manual only `name` and `type` are required.
 For type=tinvest also `token` and `tinvestAccountId` must be provided.
-For type=bybit also `apiKey` and `apiSecret` must be provided.
+For type=bybit or type=binance also `apiKey` and `apiSecret` must be provided.
 
  */
 export interface CreateAccountRequest {
@@ -33,13 +33,13 @@ export interface CreateAccountRequest {
      */
   tinvestAccountId?: string;
   /**
-     * Bybit read-only API key (required when type=bybit)
+     * Read-only API key (required when type=bybit or type=binance)
      * @minLength 8
-     * @maxLength 64
+     * @maxLength 128
      */
   apiKey?: string;
   /**
-     * Bybit read-only API secret (required when type=bybit)
+     * Read-only API secret (required when type=bybit or type=binance)
      * @minLength 8
      * @maxLength 128
      */

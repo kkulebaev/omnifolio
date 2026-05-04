@@ -20,7 +20,7 @@ const emit = defineEmits<{ "update:open": [v: boolean] }>();
 const queryClient = useQueryClient();
 const createMutation = useCreateAccount();
 
-const tab = ref<"manual" | "tinvest" | "bybit">("manual");
+const tab = ref<"manual" | "tinvest" | "bybit" | "binance">("manual");
 
 // Manual tab state
 const manualName = ref("");
@@ -38,10 +38,19 @@ const bName = ref("");
 const bApiKey = ref("");
 const bApiSecret = ref("");
 
+// Binance tab state
+const biName = ref("");
+const biApiKey = ref("");
+const biApiSecret = ref("");
+
 const error = ref<string | null>(null);
 
 const showSubmit = computed(
-  () => tab.value === "manual" || (tab.value === "tinvest" && tStep.value === "select") || tab.value === "bybit",
+  () =>
+    tab.value === "manual" ||
+    (tab.value === "tinvest" && tStep.value === "select") ||
+    tab.value === "bybit" ||
+    tab.value === "binance",
 );
 
 watch(
@@ -58,6 +67,9 @@ watch(
       bName.value = "";
       bApiKey.value = "";
       bApiSecret.value = "";
+      biName.value = "";
+      biApiKey.value = "";
+      biApiSecret.value = "";
       error.value = null;
       previewLoading.value = false;
     }
@@ -118,7 +130,7 @@ async function submit() {
           tinvestAccountId: tSelectedId.value,
         },
       });
-    } else {
+    } else if (tab.value === "bybit") {
       if (bName.value.trim().length === 0) {
         error.value = "Название обязательно";
         return;
@@ -133,6 +145,23 @@ async function submit() {
           type: AccountType.bybit,
           apiKey: bApiKey.value,
           apiSecret: bApiSecret.value,
+        },
+      });
+    } else {
+      if (biName.value.trim().length === 0) {
+        error.value = "Название обязательно";
+        return;
+      }
+      if (biApiKey.value.length < 8 || biApiSecret.value.length < 8) {
+        error.value = "API key и secret обязательны";
+        return;
+      }
+      await createMutation.mutateAsync({
+        data: {
+          name: biName.value.trim(),
+          type: AccountType.binance,
+          apiKey: biApiKey.value,
+          apiSecret: biApiSecret.value,
         },
       });
     }
@@ -206,6 +235,17 @@ function typeBadge(type: string): string {
       >
         Bybit
       </button>
+      <button
+        type="button"
+        class="px-3 py-2 text-sm"
+        :class="tab === 'binance' ? 'border-b-2 border-primary font-medium' : 'opacity-60'"
+        @click="
+          tab = 'binance';
+          error = null;
+        "
+      >
+        Binance
+      </button>
     </div>
 
     <form class="space-y-4" @submit.prevent="submit">
@@ -274,7 +314,7 @@ function typeBadge(type: string): string {
         </template>
       </template>
 
-      <template v-else>
+      <template v-else-if="tab === 'bybit'">
         <div class="space-y-1.5">
           <Label for="b-name">Название</Label>
           <Input id="b-name" v-model="bName" placeholder="Bybit Crypto" />
@@ -299,6 +339,39 @@ function typeBadge(type: string): string {
             Bybit API Management
           </a>
           с правами Wallet → Account info.
+        </p>
+      </template>
+
+      <template v-else>
+        <div class="space-y-1.5">
+          <Label for="bi-name">Название</Label>
+          <Input id="bi-name" v-model="biName" placeholder="Binance Crypto" />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="bi-key">API Key</Label>
+          <Input id="bi-key" v-model="biApiKey" placeholder="..." autocomplete="off" />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="bi-secret">API Secret</Label>
+          <Input
+            id="bi-secret"
+            v-model="biApiSecret"
+            type="password"
+            placeholder="..."
+            autocomplete="off"
+          />
+        </div>
+        <p class="text-xs opacity-60">
+          Используй <strong>read-only</strong> ключ из
+          <a
+            href="https://www.binance.com/en/my/settings/api-management"
+            target="_blank"
+            rel="noopener"
+            class="underline"
+          >
+            Binance API Management
+          </a>
+          с правом Read Info (без Trade и Withdraw).
         </p>
       </template>
 

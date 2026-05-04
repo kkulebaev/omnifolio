@@ -22,6 +22,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
 	"github.com/kkulebaev/omnifolio/api/internal/source"
+	"github.com/kkulebaev/omnifolio/api/internal/source/binance"
 	"github.com/kkulebaev/omnifolio/api/internal/source/bybit"
 	"github.com/kkulebaev/omnifolio/api/internal/source/tinvest"
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
@@ -84,6 +85,7 @@ func run() error {
 	registry := source.NewRegistry()
 	registry.Positions[account.TypeTInvest] = tinvest.NewPositionSource(tinvest.NewClient())
 	registry.Positions[account.TypeBybit] = bybit.NewPositionSource(bybit.NewClient())
+	registry.Positions[account.TypeBinance] = binance.NewPositionSource(binance.NewClient())
 
 	authSvc := auth.NewService(queries, idleTimeout, absoluteTimeout)
 	accountSvc := account.NewService(pool, encryptor, registry)

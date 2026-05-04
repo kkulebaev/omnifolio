@@ -137,6 +137,17 @@ func (s *serverImpl) CreateAccount(ctx context.Context, req oapi.CreateAccountRe
 		}
 		in.BybitAPIKey = *req.Body.ApiKey
 		in.BybitAPISecret = *req.Body.ApiSecret
+	case account.TypeBinance:
+		if req.Body.ApiKey == nil || *req.Body.ApiKey == "" {
+			return createAccountValidationResp("Validation failed",
+				map[string]string{"apiKey": "required for type=binance"}), nil
+		}
+		if req.Body.ApiSecret == nil || *req.Body.ApiSecret == "" {
+			return createAccountValidationResp("Validation failed",
+				map[string]string{"apiSecret": "required for type=binance"}), nil
+		}
+		in.BinanceAPIKey = *req.Body.ApiKey
+		in.BinanceAPISecret = *req.Body.ApiSecret
 	}
 
 	a, err := s.deps.Account.Create(ctx, user.ID, in)
@@ -152,6 +163,8 @@ func (s *serverImpl) CreateAccount(ctx context.Context, req oapi.CreateAccountRe
 				fields["token"] = "rejected by T-Invest"
 			case account.TypeBybit:
 				fields["apiKey"] = "rejected by Bybit"
+			case account.TypeBinance:
+				fields["apiKey"] = "rejected by Binance"
 			default:
 				fields["token"] = "credentials rejected"
 			}

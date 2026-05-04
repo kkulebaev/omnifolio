@@ -488,7 +488,7 @@ components:
 
     AccountType:
       type: string
-      enum: [manual, tinvest, bybit]
+      enum: [manual, tinvest, bybit, binance]
 
     AccountSyncStatus:
       type: string
@@ -549,7 +549,7 @@ components:
       description: |
         For type=manual only `name` and `type` are required.
         For type=tinvest also `token` and `tinvestAccountId` must be provided.
-        For type=bybit also `apiKey` and `apiSecret` must be provided.
+        For type=bybit or type=binance also `apiKey` and `apiSecret` must be provided.
       properties:
         name:
           type: string
@@ -570,13 +570,13 @@ components:
         apiKey:
           type: string
           minLength: 8
-          maxLength: 64
-          description: Bybit read-only API key (required when type=bybit)
+          maxLength: 128
+          description: Read-only API key (required when type=bybit or type=binance)
         apiSecret:
           type: string
           minLength: 8
           maxLength: 128
-          description: Bybit read-only API secret (required when type=bybit)
+          description: Read-only API secret (required when type=bybit or type=binance)
 
     TInvestPreviewRequest:
       type: object

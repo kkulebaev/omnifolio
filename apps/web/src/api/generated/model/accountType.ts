@@ -13,4 +13,5 @@ export const AccountType = {
   manual: 'manual',
   tinvest: 'tinvest',
   bybit: 'bybit',
+  binance: 'binance',
 } as const;

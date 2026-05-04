@@ -26,6 +26,7 @@ const (
 	TypeManual  = "manual"
 	TypeTInvest = "tinvest"
 	TypeBybit   = "bybit"
+	TypeBinance = "binance"
 )
 
 type Account struct {
@@ -47,6 +48,8 @@ type CreateInput struct {
 	TInvestAccountID string
 	BybitAPIKey      string
 	BybitAPISecret   string
+	BinanceAPIKey    string
+	BinanceAPISecret string
 }
 
 type Service struct {
@@ -77,6 +80,8 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 		return s.createBrokerage(ctx, userID, in, encodeTInvestCreds(in))
 	case TypeBybit:
 		return s.createBrokerage(ctx, userID, in, encodeBybitCreds(in))
+	case TypeBinance:
+		return s.createBrokerage(ctx, userID, in, encodeBinanceCreds(in))
 	default:
 		return Account{}, ErrTypeNotSupported
 	}
@@ -274,6 +279,14 @@ func encodeBybitCreds(in CreateInput) []byte {
 	b, _ := json.Marshal(map[string]string{
 		"apiKey":    in.BybitAPIKey,
 		"apiSecret": in.BybitAPISecret,
+	})
+	return b
+}
+
+func encodeBinanceCreds(in CreateInput) []byte {
+	b, _ := json.Marshal(map[string]string{
+		"apiKey":    in.BinanceAPIKey,
+		"apiSecret": in.BinanceAPISecret,
 	})
 	return b
 }
