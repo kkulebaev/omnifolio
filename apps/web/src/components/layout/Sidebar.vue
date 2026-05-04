@@ -92,7 +92,7 @@ const userInitials = computed(() => {
       >
         <button
           @click="navigate"
-          class="flex items-center cursor-pointer text-left border-none px-[8px] py-[6px] rounded-[5px] text-[12.5px] gap-[9px] font-[inherit]"
+          class="flex items-center cursor-pointer text-left border-none px-[8px] py-[6px] rounded-[5px] text-[12.5px] leading-none gap-[9px] font-[inherit]"
           :class="isActive(n.to) ? 'bg-soft text-foreground font-medium' : 'bg-transparent text-muted-foreground font-normal'"
         >
           <component
@@ -109,7 +109,7 @@ const userInitials = computed(() => {
         v-for="n in navItems.filter((i) => !i.enabled)"
         :key="n.id"
         disabled
-        class="flex items-center text-left bg-transparent border-none text-subtle px-[8px] py-[6px] rounded-[5px] text-[12.5px] gap-[9px] font-[inherit] cursor-not-allowed"
+        class="flex items-center text-left bg-transparent border-none text-subtle px-[8px] py-[6px] rounded-[5px] text-[12.5px] leading-none gap-[9px] font-[inherit] cursor-not-allowed"
       >
         <component :is="n.icon" :size="16" :stroke-width="1.75" class="shrink-0" />
         {{ n.label }}
