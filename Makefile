@@ -27,7 +27,7 @@ dev: services ## Start services (detached) and web (foreground)
 	pnpm --filter web dev
 
 generate: ## Regenerate sqlc + oapi-codegen + orval clients
-	$(COMPOSE) run --rm --no-deps api sh -c "sqlc generate && cd internal/server/oapi && go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 --config=config.yaml /workspace/api/openapi.yaml"
+	$(COMPOSE) run --rm --no-deps api sh -c "sqlc generate && cd internal/server/oapi && go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0 --config=config.yaml /workspace/api/openapi.yaml"
 	pnpm --filter web generate
 
 test: ## Run tests (api + web)

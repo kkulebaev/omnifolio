@@ -56,9 +56,10 @@ func (s *serverImpl) Login(ctx context.Context, req oapi.LoginRequestObject) (oa
 	if req.Body.RememberMe != nil && *req.Body.RememberMe {
 		maxAge = s.deps.MaxAge
 	}
+	cookie := buildSessionCookie(token, maxAge, s.deps.Secure).String()
 	return oapi.Login200JSONResponse{
 		Body:    toOapiUser(user),
-		Headers: oapi.Login200ResponseHeaders{SetCookie: buildSessionCookie(token, maxAge, s.deps.Secure).String()},
+		Headers: oapi.Login200ResponseHeaders{SetCookie: &cookie},
 	}, nil
 }
 
