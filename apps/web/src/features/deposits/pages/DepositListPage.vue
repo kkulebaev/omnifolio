@@ -92,9 +92,9 @@ async function handleDelete(d: Deposit) {
 </script>
 
 <template>
-  <div class="space-y-6 p-6">
+  <div class="space-y-4 sm:space-y-6 p-4 sm:p-6">
     <div class="flex items-center justify-between gap-3">
-      <h1 class="text-2xl font-semibold">Пополнения</h1>
+      <h1 class="text-xl sm:text-2xl font-semibold">Пополнения</h1>
       <Button @click="dialogOpen = true">
         <Plus :size="16" :stroke-width="1.75" />
         Добавить
@@ -163,7 +163,7 @@ async function handleDelete(d: Deposit) {
             <li
               v-for="d in g.items"
               :key="d.id"
-              class="flex items-center justify-between gap-3 px-6 py-3"
+              class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3"
             >
               <span class="text-sm">{{ formatMonth(d.month) }}</span>
               <div class="flex items-center gap-2">

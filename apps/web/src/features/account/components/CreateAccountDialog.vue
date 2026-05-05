@@ -201,7 +201,7 @@ function typeBadge(type: string): string {
   <Dialog :open="props.open" @update:open="emit('update:open', $event)">
     <h2 class="text-lg font-semibold mb-4">Новый аккаунт</h2>
 
-    <div class="flex gap-1 mb-4 border-b">
+    <div class="flex gap-1 mb-4 border-b overflow-x-auto">
       <button
         type="button"
         class="px-3 py-2 text-sm"

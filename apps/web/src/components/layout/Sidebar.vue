@@ -70,7 +70,8 @@ const userInitials = computed(() => {
 
 <template>
   <aside
-    class="flex flex-col overflow-hidden border-r border-border bg-background w-48 px-2.5 py-3.5"
+    class="flex flex-col overflow-y-auto border-r border-border bg-background px-2.5 py-3.5 w-56 md:w-48 fixed md:static inset-y-0 left-0 z-50 transition-transform duration-200 md:translate-x-0"
+    :class="ui.mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'"
   >
     <div class="flex items-center gap-2 pt-1 px-2 pb-4">
       <div

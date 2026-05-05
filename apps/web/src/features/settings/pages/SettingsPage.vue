@@ -53,9 +53,9 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="space-y-6 p-6 max-w-3xl">
+  <div class="space-y-4 sm:space-y-6 p-4 sm:p-6 max-w-3xl">
     <div>
-      <h1 class="text-2xl font-semibold">Настройки</h1>
+      <h1 class="text-xl sm:text-2xl font-semibold">Настройки</h1>
       <p class="text-sm text-muted-foreground mt-1">
         Параметры профиля и отображения портфеля
       </p>
@@ -67,21 +67,21 @@ async function handleLogout() {
         <CardDescription>Информация об учётной записи</CardDescription>
       </CardHeader>
       <CardContent class="space-y-3">
-        <div v-if="auth.user" class="space-y-2 text-sm">
-          <div class="flex items-center">
-            <span class="w-40 text-muted-foreground shrink-0">Email</span>
-            <span class="num">{{ auth.user.email }}</span>
+        <div v-if="auth.user" class="space-y-3 text-sm">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-0 min-w-0">
+            <span class="sm:w-40 text-muted-foreground shrink-0">Email</span>
+            <span class="num break-all">{{ auth.user.email }}</span>
           </div>
-          <div class="flex items-center">
-            <span class="w-40 text-muted-foreground shrink-0">Валюта профиля</span>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-0">
+            <span class="sm:w-40 text-muted-foreground shrink-0">Валюта профиля</span>
             <span class="num">{{ auth.user.displayCurrency }}</span>
           </div>
-          <div class="flex items-center">
-            <span class="w-40 text-muted-foreground shrink-0">Создан</span>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-0">
+            <span class="sm:w-40 text-muted-foreground shrink-0">Создан</span>
             <span>{{ formatDate(auth.user.createdAt) }}</span>
           </div>
-          <div class="flex items-center">
-            <span class="w-40 text-muted-foreground shrink-0">ID</span>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-0 min-w-0">
+            <span class="sm:w-40 text-muted-foreground shrink-0">ID</span>
             <span class="num text-xs text-muted-foreground break-all">
               {{ auth.user.id }}
             </span>

@@ -279,14 +279,14 @@ function pluralPositions(n: number): string {
   <template v-else>
     <!-- grid-cols arbitrary value намеренно: minmax-шаблон с одной "толстой" колонкой не выражается через стандартную шкалу Tailwind. -->
     <div
-      class="sticky top-0 z-10 bg-background grid grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr] border-b border-border"
+      class="sticky top-0 z-10 bg-background grid grid-cols-2 lg:grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr] border-b border-border"
     >
-      <div class="px-6 py-5 border-r border-border">
+      <div class="px-4 sm:px-6 py-4 sm:py-5 col-span-2 lg:col-span-1 border-b lg:border-b-0 lg:border-r border-border">
         <div class="uppercase text-xs text-muted-foreground tracking-wider mb-1.5">
           Общая стоимость
         </div>
         <div
-          :class="['num', blurClass, 'text-3xl font-semibold tracking-tight leading-none']"
+          :class="['num', blurClass, 'text-2xl sm:text-3xl font-semibold tracking-tight leading-none']"
         >
           {{ formatCurrency(grandTotal, ui.displayCurrency) }}
         </div>
@@ -298,8 +298,12 @@ function pluralPositions(n: number): string {
       <div
         v-for="(c, i) in summaryCards"
         :key="c.key"
-        class="px-6 py-5"
-        :class="i < summaryCards.length - 1 ? 'border-r border-border' : ''"
+        class="px-4 sm:px-6 py-4 sm:py-5"
+        :class="[
+          i < summaryCards.length - 1 ? 'lg:border-r border-border' : '',
+          i % 2 === 0 ? 'border-r border-border lg:border-r' : '',
+          i < summaryCards.length - 2 ? 'border-b lg:border-b-0' : '',
+        ]"
       >
         <div class="uppercase text-xs text-muted-foreground tracking-wider mb-1.5">
           {{ c.label }}
@@ -321,15 +325,15 @@ function pluralPositions(n: number): string {
       </div>
     </div>
 
-    <div class="px-6 pt-4 pb-7">
-      <div class="flex items-center justify-between mb-2.5">
+    <div class="px-4 sm:px-6 pt-4 pb-7">
+      <div class="flex items-center justify-between mb-2.5 gap-2 flex-wrap">
         <h2 class="text-xs font-semibold m-0">
           Позиции
           <span class="text-muted-foreground font-normal ml-1.5">
             {{ positions.length }}
           </span>
         </h2>
-        <div class="flex gap-1.5 text-xs">
+        <div class="flex gap-1.5 text-xs flex-wrap">
           <button
             type="button"
             :title="ui.mergePositions ? 'Развернуть по аккаунтам' : 'Агрегировать по тикеру'"
@@ -466,7 +470,64 @@ function pluralPositions(n: number): string {
 
       <div
         v-else
-        class="border border-border rounded-lg overflow-hidden bg-panel"
+        class="border border-border rounded-lg overflow-hidden bg-panel md:hidden divide-y divide-border"
+      >
+        <div
+          v-for="p in positions"
+          :key="p.isMerged ? `m-mob/${p.instrumentId}` : `mob/${p.accountId}/${p.instrumentId}`"
+          class="px-3 py-2.5"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="num font-semibold text-xs">{{ p.ticker }}</span>
+              <span
+                class="num uppercase text-xs px-1.5 py-0.5 rounded-sm text-foreground tracking-wider shrink-0"
+                :class="CLASS_BADGE[p.assetClass]?.tintClass ?? 'bg-soft'"
+              >{{ CLASS_BADGE[p.assetClass]?.label ?? p.assetClass }}</span>
+            </div>
+            <span
+              :class="['num', blurClass, 'text-xs font-medium shrink-0']"
+            >
+              <span v-if="p.valueDisplay">
+                {{ formatNumber(p.valueDisplay, 0) }} {{ valueDisplaySuffix() }}
+              </span>
+              <span v-else class="opacity-50">—</span>
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-2 mt-1.5 text-xs text-muted-foreground">
+            <span class="truncate">
+              <span v-if="p.isMerged" class="inline-flex items-center gap-1">
+                <Layers class="w-2.5 h-2.5 opacity-60" />
+                {{ p.accountCount }} {{ pluralAccounts(p.accountCount) }}
+              </span>
+              <span v-else>{{ p.accountName }}</span>
+            </span>
+            <span class="num shrink-0">
+              {{ formatQuantity(p.quantity) }}
+              <span v-if="p.price" class="opacity-60"> · {{ formatNumber(p.price, 2) }}</span>
+            </span>
+          </div>
+          <div class="flex items-center gap-2 mt-1.5">
+            <div class="flex-1 h-0.5 bg-soft rounded-xs">
+              <div
+                class="h-full bg-accent opacity-75 rounded-xs"
+                :style="{ width: `${Math.min(100, shareOf(p.valueDisplay) * 4 * 100)}%` }"
+              />
+            </div>
+            <span class="num text-xs text-muted-foreground min-w-8 text-right">{{ (shareOf(p.valueDisplay) * 100).toFixed(1) }}%</span>
+            <span
+              class="num text-xs shrink-0"
+              :class="priceAgeClass(p.priceFetchedAt, p.priceStale)"
+            >
+              {{ p.priceFetchedAt ? formatRelative(p.priceFetchedAt) : "—" }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="positions.length"
+        class="hidden md:block border border-border rounded-lg overflow-hidden bg-panel"
       >
         <table class="w-full border-collapse text-xs">
           <thead>

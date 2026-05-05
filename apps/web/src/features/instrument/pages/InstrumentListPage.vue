@@ -92,9 +92,9 @@ function nextPage() {
 </script>
 
 <template>
-  <div class="space-y-4 p-6">
+  <div class="space-y-4 p-4 sm:p-6">
     <div class="flex items-center justify-between gap-4">
-      <h1 class="text-2xl font-semibold">Инструменты</h1>
+      <h1 class="text-xl sm:text-2xl font-semibold">Инструменты</h1>
       <span class="text-sm text-muted-foreground num">
         {{ total }} всего
       </span>

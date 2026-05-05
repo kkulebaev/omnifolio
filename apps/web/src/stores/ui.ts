@@ -72,6 +72,14 @@ export const useUiStore = defineStore("ui", () => {
     }
   });
 
+  const mobileSidebarOpen = ref<boolean>(false);
+  function toggleMobileSidebar() {
+    mobileSidebarOpen.value = !mobileSidebarOpen.value;
+  }
+  function closeMobileSidebar() {
+    mobileSidebarOpen.value = false;
+  }
+
   return {
     displayCurrency,
     theme,
@@ -81,6 +89,9 @@ export const useUiStore = defineStore("ui", () => {
     mergePositions,
     toggleMergePositions,
     defaultDepositAmount,
+    mobileSidebarOpen,
+    toggleMobileSidebar,
+    closeMobileSidebar,
     SUPPORTED_CURRENCIES,
   };
 });

@@ -96,10 +96,10 @@ function statusLabel(s: string | null | undefined): string {
 </script>
 
 <template>
-  <div class="space-y-6 p-6">
-    <div class="flex items-center gap-3">
-      <RouterLink to="/accounts" class="text-sm opacity-60 hover:underline">←</RouterLink>
-      <h1 v-if="account.data.value" class="text-2xl font-semibold">
+  <div class="space-y-4 sm:space-y-6 p-4 sm:p-6">
+    <div class="flex items-center gap-3 min-w-0">
+      <RouterLink to="/accounts" class="text-sm opacity-60 hover:underline shrink-0">←</RouterLink>
+      <h1 v-if="account.data.value" class="text-xl sm:text-2xl font-semibold truncate">
         {{ account.data.value.name }}
       </h1>
     </div>
