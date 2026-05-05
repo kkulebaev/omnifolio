@@ -279,7 +279,7 @@ function pluralPositions(n: number): string {
   <template v-else>
     <!-- grid-cols arbitrary value намеренно: minmax-шаблон с одной "толстой" колонкой не выражается через стандартную шкалу Tailwind. -->
     <div
-      class="sticky top-0 z-10 bg-background grid grid-cols-2 lg:grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr] border-b border-border"
+      class="md:sticky md:top-0 z-10 bg-background grid grid-cols-2 lg:grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr] border-b border-border"
     >
       <div class="px-4 sm:px-6 py-4 sm:py-5 col-span-2 lg:col-span-1 border-b lg:border-b-0 lg:border-r border-border">
         <div class="uppercase text-xs text-muted-foreground tracking-wider mb-1.5">
