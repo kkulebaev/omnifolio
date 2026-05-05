@@ -8,6 +8,7 @@ import type { Account } from "@/api/generated/model/account";
 import {
   LayoutDashboard,
   Wallet,
+  Banknote,
   CandlestickChart,
   Settings,
 } from "lucide-vue-next";
@@ -19,6 +20,7 @@ const ui = useUiStore();
 const navItems = [
   { id: "dash", label: "Дэшборд", icon: LayoutDashboard, to: "/", enabled: true },
   { id: "acc", label: "Аккаунты", icon: Wallet, to: "/accounts", enabled: true },
+  { id: "dep", label: "Пополнения", icon: Banknote, to: "/deposits", enabled: true },
   { id: "ins", label: "Инструменты", icon: CandlestickChart, to: "/instruments", enabled: true },
   { id: "set", label: "Настройки", icon: Settings, to: "/settings", enabled: true },
 ];

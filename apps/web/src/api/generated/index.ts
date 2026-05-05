@@ -35,7 +35,10 @@ import type {
   AccountList,
   ConflictResponse,
   CreateAccountRequest,
+  CreateDepositRequest,
   CreatePositionRequest,
+  Deposit,
+  DepositList,
   GetPortfolioParams,
   Health,
   InstrumentList,
@@ -1354,4 +1357,224 @@ export function useGetPortfolio<TData = Awaited<ReturnType<typeof getPortfolio>>
 
 
 
+
+export const getListDepositsUrl = () => {
+
+
+
+
+  return `/deposits`
+}
+
+/**
+ * @summary List user deposits
+ */
+export const listDeposits = async ( options?: RequestInit): Promise<DepositList> => {
+
+  return fetcher<DepositList>(getListDepositsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDepositsQueryKey = () => {
+    return [
+    'deposits'
+    ] as const;
+    }
+
+
+export const getListDepositsQueryOptions = <TData = Awaited<ReturnType<typeof listDeposits>>, TError = UnauthorizedResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  getListDepositsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDeposits>>> = ({ signal }) => listDeposits({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData>
+}
+
+export type ListDepositsQueryResult = NonNullable<Awaited<ReturnType<typeof listDeposits>>>
+export type ListDepositsQueryError = UnauthorizedResponse
+
+
+/**
+ * @summary List user deposits
+ */
+
+export function useListDeposits<TData = Awaited<ReturnType<typeof listDeposits>>, TError = UnauthorizedResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient
+ ): UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListDepositsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
+
+  return query;
+}
+
+
+
+
+
+
+
+export const getCreateDepositUrl = () => {
+
+
+
+
+  return `/deposits`
+}
+
+/**
+ * @summary Create a deposit
+ */
+export const createDeposit = async (createDepositRequest: CreateDepositRequest, options?: RequestInit): Promise<Deposit> => {
+
+  return fetcher<Deposit>(getCreateDepositUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createDepositRequest,)
+  }
+);}
+
+
+
+
+export const getCreateDepositMutationOptions = <TError = UnauthorizedResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,{data: CreateDepositRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,{data: CreateDepositRequest}, TContext> => {
+
+const mutationKey = ['createDeposit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDeposit>>, {data: CreateDepositRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDeposit(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDepositMutationResult = NonNullable<Awaited<ReturnType<typeof createDeposit>>>
+    export type CreateDepositMutationBody = CreateDepositRequest
+    export type CreateDepositMutationError = UnauthorizedResponse | ValidationErrorResponse
+
+    /**
+ * @summary Create a deposit
+ */
+export const useCreateDeposit = <TError = UnauthorizedResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,{data: CreateDepositRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof createDeposit>>,
+        TError,
+        {data: CreateDepositRequest},
+        TContext
+      > => {
+      return useMutation(getCreateDepositMutationOptions(options), queryClient);
+    }
+
+export const getDeleteDepositUrl = (depositId: string,) => {
+
+
+
+
+  return `/deposits/${depositId}`
+}
+
+/**
+ * @summary Delete a deposit
+ */
+export const deleteDeposit = async (depositId: string, options?: RequestInit): Promise<void> => {
+
+  return fetcher<void>(getDeleteDepositUrl(depositId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteDepositMutationOptions = <TError = UnauthorizedResponse | NotFoundResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDeposit>>, TError,{depositId: string}, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDeposit>>, TError,{depositId: string}, TContext> => {
+
+const mutationKey = ['deleteDeposit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDeposit>>, {depositId: string}> = (props) => {
+          const {depositId} = props ?? {};
+
+          return  deleteDeposit(depositId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDepositMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDeposit>>>
+
+    export type DeleteDepositMutationError = UnauthorizedResponse | NotFoundResponse
+
+    /**
+ * @summary Delete a deposit
+ */
+export const useDeleteDeposit = <TError = UnauthorizedResponse | NotFoundResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDeposit>>, TError,{depositId: string}, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof deleteDeposit>>,
+        TError,
+        {depositId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteDepositMutationOptions(options), queryClient);
+    }
 

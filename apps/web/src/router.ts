@@ -27,6 +27,12 @@ const routes: RouteRecordRaw[] = [
     meta: { layout: "app", requiresAuth: true },
   },
   {
+    path: "/deposits",
+    name: "deposits",
+    component: () => import("@/features/deposits/pages/DepositListPage.vue"),
+    meta: { layout: "app", requiresAuth: true },
+  },
+  {
     path: "/instruments",
     name: "instruments",
     component: () => import("@/features/instrument/pages/InstrumentListPage.vue"),
