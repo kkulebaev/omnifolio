@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/formatters";
+import { confirm } from "@/lib/confirm";
 
 const auth = useAuthStore();
 const ui = useUiStore();
@@ -20,7 +21,11 @@ const router = useRouter();
 const queryClient = useQueryClient();
 
 async function handleLogout() {
-  if (!confirm("Выйти из аккаунта?")) return;
+  const ok = await confirm({
+    title: "Выйти из аккаунта?",
+    confirmText: "Выйти",
+  });
+  if (!ok) return;
   try {
     await apiLogout();
   } catch {

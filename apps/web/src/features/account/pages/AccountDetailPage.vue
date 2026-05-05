@@ -21,6 +21,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { formatDate, formatQuantity } from "@/lib/formatters";
+import { confirm } from "@/lib/confirm";
 import AddPositionDialog from "../components/AddPositionDialog.vue";
 
 const route = useRoute();
@@ -45,7 +46,13 @@ const dialogOpen = ref(false);
 const isManual = computed(() => account.data.value?.type === "manual");
 
 async function handleDeleteAccount() {
-  if (!confirm("Удалить аккаунт со всеми позициями?")) return;
+  const ok = await confirm({
+    title: "Удалить аккаунт?",
+    body: "Все позиции этого аккаунта будут удалены.",
+    confirmText: "Удалить",
+    danger: true,
+  });
+  if (!ok) return;
   await deleteAccount.mutateAsync({ accountId: accountId.value });
   queryClient.invalidateQueries({ queryKey: getListAccountsQueryKey() });
   queryClient.invalidateQueries({ queryKey: ["portfolio"] });
@@ -53,7 +60,12 @@ async function handleDeleteAccount() {
 }
 
 async function handleDeletePosition(instrumentId: string) {
-  if (!confirm("Удалить позицию?")) return;
+  const ok = await confirm({
+    title: "Удалить позицию?",
+    confirmText: "Удалить",
+    danger: true,
+  });
+  if (!ok) return;
   await deletePosition.mutateAsync({ accountId: accountId.value, instrumentId });
   queryClient.invalidateQueries({ queryKey: getGetAccountQueryKey(accountId.value) });
   queryClient.invalidateQueries({ queryKey: ["portfolio"] });
