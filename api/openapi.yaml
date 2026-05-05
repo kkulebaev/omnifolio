@@ -527,6 +527,9 @@ components:
           type: string
           minLength: 12
           maxLength: 128
+        rememberMe:
+          type: boolean
+          default: false
 
     User:
       type: object

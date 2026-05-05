@@ -52,9 +52,13 @@ func (s *serverImpl) Login(ctx context.Context, req oapi.LoginRequestObject) (oa
 	}
 
 	s.deps.Logger.Info("auth: login ok", "user_id", user.ID)
+	maxAge := 0
+	if req.Body.RememberMe != nil && *req.Body.RememberMe {
+		maxAge = s.deps.MaxAge
+	}
 	return oapi.Login200JSONResponse{
 		Body:    toOapiUser(user),
-		Headers: oapi.Login200ResponseHeaders{SetCookie: buildSessionCookie(token, s.deps.MaxAge, s.deps.Secure).String()},
+		Headers: oapi.Login200ResponseHeaders{SetCookie: buildSessionCookie(token, maxAge, s.deps.Secure).String()},
 	}, nil
 }
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 
 const email = ref("");
 const password = ref("");
+const rememberMe = ref(false);
 const error = ref<string | null>(null);
 
 const auth = useAuthStore();
@@ -23,7 +24,9 @@ const login = useLogin();
 async function submit() {
   error.value = null;
   try {
-    const user = await login.mutateAsync({ data: { email: email.value, password: password.value } });
+    const user = await login.mutateAsync({
+      data: { email: email.value, password: password.value, rememberMe: rememberMe.value },
+    });
     auth.setUser(user);
     queryClient.setQueryData(["/auth/me"], user);
     const redirect = (route.query.redirect as string) ?? "/";
@@ -67,6 +70,16 @@ async function submit() {
             autocomplete="current-password"
             :disabled="login.isPending.value"
           />
+        </div>
+        <div class="flex items-center gap-2">
+          <input
+            id="rememberMe"
+            v-model="rememberMe"
+            type="checkbox"
+            class="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="login.isPending.value"
+          />
+          <Label for="rememberMe" class="cursor-pointer select-none">Запомнить меня</Label>
         </div>
         <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
         <Button type="submit" class="w-full" :disabled="login.isPending.value">
