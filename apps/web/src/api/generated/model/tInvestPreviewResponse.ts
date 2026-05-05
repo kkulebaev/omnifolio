@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Omnifolio API
  * Personal investments tracker.
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 1.0.0
  */
 import type { TInvestSubAccount } from './tInvestSubAccount';
 
