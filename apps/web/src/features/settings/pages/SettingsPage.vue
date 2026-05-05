@@ -185,7 +185,7 @@ async function handleLogout() {
             :title="ui.privacy ? 'Показать суммы' : 'Скрыть суммы'"
             class="relative inline-block w-9 h-5 rounded-full transition-colors duration-150 cursor-pointer border-none p-0 shrink-0"
             :class="ui.privacy ? 'bg-accent' : 'bg-subtle'"
-            @click="ui.togglePrivacy"
+            @click="ui.togglePrivacy()"
           >
             <span
               class="absolute inset-y-0 my-auto w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-150"
@@ -208,7 +208,7 @@ async function handleLogout() {
             "
             class="relative inline-block w-9 h-5 rounded-full transition-colors duration-150 cursor-pointer border-none p-0 shrink-0"
             :class="ui.mergePositions ? 'bg-accent' : 'bg-subtle'"
-            @click="ui.toggleMergePositions"
+            @click="ui.toggleMergePositions()"
           >
             <span
               class="absolute inset-y-0 my-auto w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-150"

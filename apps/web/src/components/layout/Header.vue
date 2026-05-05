@@ -59,7 +59,7 @@ async function handleLogout() {
         type="button"
         class="md:hidden inline-flex items-center justify-center w-7 h-7 rounded-sm border border-border bg-panel text-muted-foreground cursor-pointer shrink-0"
         :title="ui.mobileSidebarOpen ? 'Закрыть меню' : 'Открыть меню'"
-        @click="ui.toggleMobileSidebar"
+        @click="ui.toggleMobileSidebar()"
       >
         <Menu :size="14" :stroke-width="1.75" />
       </button>
@@ -96,7 +96,7 @@ async function handleLogout() {
     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
       <button
         :title="ui.privacy ? 'Показать суммы' : 'Скрыть суммы (privacy)'"
-        @click="ui.togglePrivacy"
+        @click="ui.togglePrivacy()"
         class="inline-flex items-center cursor-pointer gap-2 px-2.5 py-1 border border-border rounded-sm bg-panel text-muted-foreground text-xs"
       >
         <span
@@ -133,7 +133,7 @@ async function handleLogout() {
 
       <div
         class="hidden sm:flex cursor-pointer border border-border rounded-sm p-px bg-panel"
-        @click="ui.toggleTheme"
+        @click="ui.toggleTheme()"
       >
         <span
           class="px-2 py-1 rounded-sm text-xs"

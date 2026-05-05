@@ -337,7 +337,7 @@ function pluralPositions(n: number): string {
           <button
             type="button"
             :title="ui.mergePositions ? 'Развернуть по аккаунтам' : 'Агрегировать по тикеру'"
-            @click="ui.toggleMergePositions"
+            @click="ui.toggleMergePositions()"
             class="inline-flex items-center cursor-pointer gap-2 px-2.5 py-1 border border-border rounded-sm bg-panel text-muted-foreground text-xs"
           >
             <span :class="ui.mergePositions ? 'text-foreground' : 'text-muted-foreground'">Агрегировать</span>

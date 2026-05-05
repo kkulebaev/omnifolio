@@ -9,7 +9,7 @@ import { useUiStore } from "@/stores/ui";
 const ui = useUiStore();
 const route = useRoute();
 
-watch(() => route.fullPath, () => ui.closeMobileSidebar());
+watch(() => route.fullPath, () => ui.toggleMobileSidebar(false));
 </script>
 
 <template>
@@ -18,7 +18,7 @@ watch(() => route.fullPath, () => ui.closeMobileSidebar());
     <div
       v-if="ui.mobileSidebarOpen"
       class="md:hidden fixed inset-0 z-40 bg-black/50"
-      @click="ui.closeMobileSidebar"
+      @click="ui.toggleMobileSidebar(false)"
     />
     <main class="flex-1 flex flex-col overflow-hidden min-w-0">
       <Header />

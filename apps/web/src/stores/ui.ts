@@ -1,5 +1,6 @@
 import { ref, watch } from "vue";
 import { defineStore } from "pinia";
+import { useToggle } from "@vueuse/core";
 
 const SUPPORTED_CURRENCIES = ["RUB", "USD", "EUR"] as const;
 export type DisplayCurrency = (typeof SUPPORTED_CURRENCIES)[number];
@@ -20,8 +21,12 @@ export const useUiStore = defineStore("ui", () => {
     localStorage.setItem(LS_CURRENCY, v);
   });
 
-  const storedTheme = (localStorage.getItem(LS_THEME) as "light" | "dark" | null) ?? "light";
-  const theme = ref<"light" | "dark">(storedTheme);
+  const storedTheme =
+    (localStorage.getItem(LS_THEME) as "light" | "dark" | null) ?? "light";
+  const [theme, toggleTheme] = useToggle<"dark", "light">(storedTheme, {
+    truthyValue: "dark",
+    falsyValue: "light",
+  });
 
   function applyTheme() {
     if (theme.value === "dark") {
@@ -36,27 +41,19 @@ export const useUiStore = defineStore("ui", () => {
     applyTheme();
   });
 
-  function toggleTheme() {
-    theme.value = theme.value === "light" ? "dark" : "light";
-  }
-
-  const privacy = ref<boolean>(localStorage.getItem(LS_PRIVACY) === "1");
+  const [privacy, togglePrivacy] = useToggle(
+    localStorage.getItem(LS_PRIVACY) === "1",
+  );
   watch(privacy, (v) => {
     localStorage.setItem(LS_PRIVACY, v ? "1" : "0");
   });
-  function togglePrivacy() {
-    privacy.value = !privacy.value;
-  }
 
-  const mergePositions = ref<boolean>(
+  const [mergePositions, toggleMergePositions] = useToggle(
     localStorage.getItem(LS_MERGE_POSITIONS) === "1",
   );
   watch(mergePositions, (v) => {
     localStorage.setItem(LS_MERGE_POSITIONS, v ? "1" : "0");
   });
-  function toggleMergePositions() {
-    mergePositions.value = !mergePositions.value;
-  }
 
   const storedDeposit = localStorage.getItem(LS_DEFAULT_DEPOSIT);
   const defaultDepositAmount = ref<number | null>(
@@ -72,13 +69,7 @@ export const useUiStore = defineStore("ui", () => {
     }
   });
 
-  const mobileSidebarOpen = ref<boolean>(false);
-  function toggleMobileSidebar() {
-    mobileSidebarOpen.value = !mobileSidebarOpen.value;
-  }
-  function closeMobileSidebar() {
-    mobileSidebarOpen.value = false;
-  }
+  const [mobileSidebarOpen, toggleMobileSidebar] = useToggle(false);
 
   return {
     displayCurrency,
@@ -91,7 +82,6 @@ export const useUiStore = defineStore("ui", () => {
     defaultDepositAmount,
     mobileSidebarOpen,
     toggleMobileSidebar,
-    closeMobileSidebar,
     SUPPORTED_CURRENCIES,
   };
 });
