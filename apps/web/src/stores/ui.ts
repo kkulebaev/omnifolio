@@ -8,6 +8,7 @@ const LS_CURRENCY = "omnifolio:displayCurrency";
 const LS_THEME = "omnifolio:theme";
 const LS_PRIVACY = "omnifolio:privacy";
 const LS_MERGE_POSITIONS = "omnifolio:mergePositions";
+const LS_DEFAULT_DEPOSIT = "omnifolio:defaultDepositAmount";
 
 export const useUiStore = defineStore("ui", () => {
   const stored = (localStorage.getItem(LS_CURRENCY) as DisplayCurrency | null) ?? "RUB";
@@ -57,6 +58,20 @@ export const useUiStore = defineStore("ui", () => {
     mergePositions.value = !mergePositions.value;
   }
 
+  const storedDeposit = localStorage.getItem(LS_DEFAULT_DEPOSIT);
+  const defaultDepositAmount = ref<number | null>(
+    storedDeposit && /^[1-9][0-9]*$/.test(storedDeposit)
+      ? Number(storedDeposit)
+      : null,
+  );
+  watch(defaultDepositAmount, (v) => {
+    if (v == null) {
+      localStorage.removeItem(LS_DEFAULT_DEPOSIT);
+    } else {
+      localStorage.setItem(LS_DEFAULT_DEPOSIT, String(v));
+    }
+  });
+
   return {
     displayCurrency,
     theme,
@@ -65,6 +80,7 @@ export const useUiStore = defineStore("ui", () => {
     togglePrivacy,
     mergePositions,
     toggleMergePositions,
+    defaultDepositAmount,
     SUPPORTED_CURRENCIES,
   };
 });

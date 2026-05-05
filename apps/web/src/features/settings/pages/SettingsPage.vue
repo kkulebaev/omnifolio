@@ -12,13 +12,28 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/formatters";
 import { confirm } from "@/lib/confirm";
+import { computed } from "vue";
 
 const auth = useAuthStore();
 const ui = useUiStore();
 const router = useRouter();
 const queryClient = useQueryClient();
+
+const defaultDepositInput = computed<string>({
+  get: () =>
+    ui.defaultDepositAmount != null ? String(ui.defaultDepositAmount) : "",
+  set: (v) => {
+    const trimmed = v.trim();
+    if (trimmed === "") {
+      ui.defaultDepositAmount = null;
+    } else if (/^[1-9][0-9]*$/.test(trimmed)) {
+      ui.defaultDepositAmount = Number(trimmed);
+    }
+  },
+});
 
 async function handleLogout() {
   const ok = await confirm({
@@ -200,6 +215,30 @@ async function handleLogout() {
               :class="ui.mergePositions ? 'left-5' : 'left-0.5'"
             />
           </button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="text-base">Пополнения</CardTitle>
+        <CardDescription>Поведение формы добавления</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-5">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-sm font-medium">Сумма по умолчанию</div>
+            <div class="text-xs text-muted-foreground mt-0.5">
+              Подставляется в форму нового пополнения. Пусто — не подставлять.
+            </div>
+          </div>
+          <Input
+            v-model="defaultDepositInput"
+            type="text"
+            inputmode="numeric"
+            placeholder="50000"
+            class="w-32 num"
+          />
         </div>
       </CardContent>
     </Card>
