@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useQueryClient } from "@tanstack/vue-query";
 import {
   useListDeposits,
@@ -11,13 +11,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/formatters";
 import { confirm } from "@/lib/confirm";
-import { Trash2, Plus } from "lucide-vue-next";
+import { Trash2, Plus, ChevronDown } from "lucide-vue-next";
 import CreateDepositDialog from "../components/CreateDepositDialog.vue";
 
 const list = useListDeposits();
 const deleteDeposit = useDeleteDeposit();
 const queryClient = useQueryClient();
 const dialogOpen = ref(false);
+const collapsedYears = ref<Set<number>>(new Set());
+let collapseInitialized = false;
+
+function toggleYear(year: number) {
+  const next = new Set(collapsedYears.value);
+  if (next.has(year)) next.delete(year);
+  else next.add(year);
+  collapsedYears.value = next;
+}
 
 const monthFormatter = new Intl.DateTimeFormat("ru-RU", {
   month: "long",
@@ -58,6 +67,16 @@ const groups = computed<YearGroup[]>(() => {
   }
   return [...map.values()].sort((a, b) => b.year - a.year);
 });
+
+watch(
+  groups,
+  (g) => {
+    if (collapseInitialized || g.length === 0) return;
+    collapsedYears.value = new Set(g.slice(1).map((x) => x.year));
+    collapseInitialized = true;
+  },
+  { immediate: true },
+);
 
 async function handleDelete(d: Deposit) {
   const ok = await confirm({
@@ -115,15 +134,31 @@ async function handleDelete(d: Deposit) {
       </Card>
 
       <Card v-for="g in groups" :key="g.year">
-        <CardHeader>
-          <div class="flex items-baseline justify-between gap-3">
-            <CardTitle class="text-base num">{{ g.year }}</CardTitle>
+        <CardHeader
+          class="cursor-pointer select-none"
+          role="button"
+          tabindex="0"
+          :aria-expanded="!collapsedYears.has(g.year)"
+          @click="toggleYear(g.year)"
+          @keydown.enter.prevent="toggleYear(g.year)"
+          @keydown.space.prevent="toggleYear(g.year)"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <ChevronDown
+                :size="16"
+                :stroke-width="1.75"
+                class="text-muted-foreground transition-transform"
+                :class="collapsedYears.has(g.year) ? '-rotate-90' : ''"
+              />
+              <CardTitle class="text-base num">{{ g.year }}</CardTitle>
+            </div>
             <span class="text-sm font-medium num">
               {{ formatCurrency(g.subtotal, "RUB") }}
             </span>
           </div>
         </CardHeader>
-        <CardContent class="p-0">
+        <CardContent v-if="!collapsedYears.has(g.year)" class="p-0">
           <ul class="divide-y divide-border">
             <li
               v-for="d in g.items"
