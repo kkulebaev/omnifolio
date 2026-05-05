@@ -82,11 +82,17 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, er
 
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions
-SET last_seen_at = now()
+SET last_seen_at = now(),
+    expires_at = GREATEST(expires_at, $2::timestamptz)
 WHERE token_hash = $1
 `
 
-func (q *Queries) TouchSession(ctx context.Context, tokenHash []byte) error {
-	_, err := q.db.Exec(ctx, touchSession, tokenHash)
+type TouchSessionParams struct {
+	TokenHash    []byte
+	MinExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
+	_, err := q.db.Exec(ctx, touchSession, arg.TokenHash, arg.MinExpiresAt)
 	return err
 }

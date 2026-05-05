@@ -40,7 +40,8 @@ func (s *serverImpl) Login(ctx context.Context, req oapi.LoginRequestObject) (oa
 		return validationProblem("missing body", nil).asLoginResponse(), nil
 	}
 
-	token, user, err := s.deps.Auth.Login(ctx, string(req.Body.Email), req.Body.Password)
+	rememberMe := req.Body.RememberMe != nil && *req.Body.RememberMe
+	token, user, err := s.deps.Auth.Login(ctx, string(req.Body.Email), req.Body.Password, rememberMe)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			s.deps.Logger.Warn("auth: login failed", "email", string(req.Body.Email))
@@ -53,7 +54,7 @@ func (s *serverImpl) Login(ctx context.Context, req oapi.LoginRequestObject) (oa
 
 	s.deps.Logger.Info("auth: login ok", "user_id", user.ID)
 	maxAge := 0
-	if req.Body.RememberMe != nil && *req.Body.RememberMe {
+	if rememberMe {
 		maxAge = s.deps.MaxAge
 	}
 	cookie := buildSessionCookie(token, maxAge, s.deps.Secure).String()

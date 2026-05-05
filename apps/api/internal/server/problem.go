@@ -32,8 +32,7 @@ func errorToProblem(log *slog.Logger, err error) problem {
 		return problem{Type: "/errors/unauthorized", Title: "Invalid credentials", Status: 401}
 	case errors.Is(err, auth.ErrUnauthenticated),
 		errors.Is(err, auth.ErrSessionInvalid),
-		errors.Is(err, auth.ErrSessionExpired),
-		errors.Is(err, auth.ErrSessionIdle):
+		errors.Is(err, auth.ErrSessionExpired):
 		return problem{Type: "/errors/unauthorized", Title: "Unauthenticated", Status: 401}
 	default:
 		log.Error("internal error", "err", err)

@@ -9,7 +9,8 @@ WHERE token_hash = $1;
 
 -- name: TouchSession :exec
 UPDATE sessions
-SET last_seen_at = now()
+SET last_seen_at = now(),
+    expires_at = GREATEST(expires_at, sqlc.arg(min_expires_at)::timestamptz)
 WHERE token_hash = $1;
 
 -- name: DeleteSession :exec

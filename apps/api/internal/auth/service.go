@@ -52,7 +52,12 @@ func NewService(q *storage.Queries, idle, absolute time.Duration) *Service {
 
 // Login verifies credentials and creates a new session. Returns the cookie token
 // (plaintext) and the user. On failure returns ErrInvalidCredentials.
-func (s *Service) Login(ctx context.Context, email, password string) (token string, user User, err error) {
+//
+// rememberMe controls session lifetime: when true, expires_at is set to the
+// absolute timeout and is not extended on activity (long-lived persistent
+// session). When false, expires_at uses the idle timeout and slides forward
+// on each request.
+func (s *Service) Login(ctx context.Context, email, password string, rememberMe bool) (token string, user User, err error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	row, err := s.q.GetUserByEmail(ctx, email)
@@ -75,10 +80,15 @@ func (s *Service) Login(ctx context.Context, email, password string) (token stri
 		return "", User{}, fmt.Errorf("generate session: %w", err)
 	}
 
+	lifetime := s.idleTimeout
+	if rememberMe {
+		lifetime = s.absoluteTimeout
+	}
+
 	if err := s.q.CreateSession(ctx, storage.CreateSessionParams{
 		TokenHash: hash,
 		UserID:    row.ID,
-		ExpiresAt: pgTimestamp(s.now().Add(s.absoluteTimeout)),
+		ExpiresAt: pgTimestamp(s.now().Add(lifetime)),
 	}); err != nil {
 		return "", User{}, fmt.Errorf("create session: %w", err)
 	}
@@ -98,8 +108,9 @@ func (s *Service) Logout(ctx context.Context, cookieToken string) error {
 	return s.q.DeleteSession(ctx, hash)
 }
 
-// Resolve looks up the session identified by cookieToken, validates expiry/idle,
-// touches last_seen_at if needed, and returns the associated user.
+// Resolve looks up the session identified by cookieToken, validates expires_at,
+// slides expires_at forward via TouchSession (capped at the current value, so
+// remember-me sessions are never shortened), and returns the associated user.
 func (s *Service) Resolve(ctx context.Context, cookieToken string) (User, error) {
 	if cookieToken == "" {
 		return User{}, ErrUnauthenticated
@@ -122,13 +133,12 @@ func (s *Service) Resolve(ctx context.Context, cookieToken string) (User, error)
 		_ = s.q.DeleteSession(ctx, hash)
 		return User{}, ErrSessionExpired
 	}
-	if now.Sub(sess.LastSeenAt.Time) > s.idleTimeout {
-		_ = s.q.DeleteSession(ctx, hash)
-		return User{}, ErrSessionIdle
-	}
 
 	if now.Sub(sess.LastSeenAt.Time) > time.Minute {
-		_ = s.q.TouchSession(ctx, hash)
+		_ = s.q.TouchSession(ctx, storage.TouchSessionParams{
+			TokenHash:    hash,
+			MinExpiresAt: pgTimestamp(now.Add(s.idleTimeout)),
+		})
 	}
 
 	row, err := s.q.GetUserByID(ctx, sess.UserID)
