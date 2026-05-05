@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const email = ref("");
 const password = ref("");
@@ -72,11 +73,9 @@ async function submit() {
           />
         </div>
         <div class="flex items-center gap-2">
-          <input
+          <Checkbox
             id="rememberMe"
             v-model="rememberMe"
-            type="checkbox"
-            class="h-4 w-4 rounded border-input text-primary focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="login.isPending.value"
           />
           <Label for="rememberMe" class="cursor-pointer select-none">Запомнить меня</Label>
