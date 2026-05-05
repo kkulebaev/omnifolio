@@ -19,7 +19,7 @@
 <p><b>Aggregates portfolios from multiple sources and shows them per-account and combined, with values converted into a chosen display currency.</b></p>
 
 <p>
-  Russian stocks via <b>T-Invest</b> · crypto via <b>Bybit</b> · anything via <b>manual entry</b>
+  Russian stocks via <b>T-Invest</b> · crypto via <b>Bybit</b> &amp; <b>Binance</b> · anything via <b>manual entry</b>
 </p>
 
 <sub>
@@ -34,9 +34,11 @@
 
 ## ✨ Features
 
-- 🔌 **Multi-source sync** — T-Invest (RU stocks), Bybit (crypto), manual accounts.
+- 🔌 **Multi-source sync** — T-Invest (RU stocks), Bybit & Binance (crypto), manual accounts.
 - 💱 **Multi-currency** — daily CBR FX rates, per-account values converted to a chosen display currency.
 - 📈 **Live quotes** — Finnhub for US, T-Invest for MOEX, Bybit for crypto, refreshed by a one-shot cron.
+- 📒 **Deposits journal** — record monthly contributions, the foundation for future TWR/XIRR returns.
+- 📱 **Mobile-friendly** — responsive UI for phones (off-canvas sidebar, card-style tables).
 - 🔒 **AES-GCM encrypted credentials** — broker tokens never leave the DB in plaintext.
 - 📑 **OpenAPI single source of truth** — backend handlers and TS client are both generated.
 - 🚂 **Railway-native** — auto-deploy from `main`, watch-pattern–scoped service rebuilds.
@@ -58,7 +60,13 @@
 ## 🚀 Local development
 
 ```sh
-make services           # postgres + api in docker-compose with hot reload
+make dev                # postgres + api (docker-compose, detached) + web (vite, foreground)
+```
+
+Or split it:
+
+```sh
+make services           # postgres + api in background; `make services-down` to stop
 pnpm --filter web dev   # vite on :5173
 ```
 
