@@ -1,23 +1,29 @@
 # Omnifolio — Design Document
 
 Приложение для учёта личных инвестиций. Агрегирует портфели из разных источников
-(российские бумаги через T-Invest, крипта через Bybit, остальное вручную)
-и показывает их по отдельности и в сумме.
+(российские бумаги через T-Invest, крипта через Bybit и Binance, остальное
+вручную) и показывает их по отдельности и в сумме.
 
-Документ зафиксирован после интервью-сессии и описывает MVP v0.1.
+Документ описывает архитектуру v0.1 — текущее состояние кодовой базы. Ниже —
+живой обзор. Решения, принятые на отдельных milestone-интервью, остались
+в виде исторических разделов §15–§19. Сводку отклонений от них — см. §20.
 
 ---
 
 ## 1. Цель и scope
 
-**Главная задача**: снапшот текущей стоимости и распределения активов.
+**Главная задача**: снапшот текущей стоимости и распределения активов
+плюс ручной журнал ежемесячных пополнений как фундамент под будущий расчёт
+доходности.
 
-- Что показываем: сколько всего сейчас, в каких активах, в каких валютах.
+- Что показываем: сколько всего сейчас, в каких активах, в каких валютах,
+  плюс список deposits (помесячные взносы) — для будущего TWR/XIRR.
 - Что НЕ показываем (отложено): доходность во времени (TWR/XIRR), журнал сделок,
   P&L по позициям, налоговый учёт, ребалансировка, дивиденды, корпоративные действия.
 
 Решение строит модель данных вокруг текущего состояния (positions snapshot),
-а не вокруг истории транзакций.
+а не вокруг истории транзакций. Deposits добавлены отдельной таблицей —
+это единственный счётчик «вложенных денег», независимый от позиций.
 
 ---
 
@@ -27,43 +33,45 @@
 
 Гибридная стратегия: где есть API — синкаем; остальное руками.
 
-| Источник | Как тянем позиции | Статус MVP |
+| Источник | Как тянем позиции | Статус |
 |---|---|---|
-| T-Invest | gRPC `OperationsService.GetPortfolio` | M2 |
-| Bybit | REST `/v5/account/wallet-balance` (HMAC) | M3 |
-| Manual | Ручной ввод через UI | M1 |
-| IBKR | Client Portal Web API (требует gateway) | **Отложено** |
+| Manual | Ручной ввод через UI | реализовано |
+| T-Invest | REST `https://invest-public-api.tinkoff.ru/rest/...` (Bearer) | реализовано |
+| Bybit | REST `/v5/account/wallet-balance` (HMAC) | реализовано |
+| Binance | REST `/api/v3/account` (HMAC) | реализовано |
+| IBKR | Client Portal Web API (требует gateway) | **backlog** |
 
-Архитектурный интерфейс:
+Реализация в `apps/api/internal/source/{tinvest,bybit,binance}/`. Manual —
+не отдельный source-пакет: позиции пишутся напрямую в `positions` через
+обычный CRUD-эндпоинт, без `Sync`/`Resolve`.
+
+Архитектурный интерфейс (`internal/source/source.go`):
 
 ```go
 type PositionSource interface {
-    Sync(ctx context.Context, account Account) ([]Position, error)
-    Resolve(ctx context.Context, nativeID string) (InstrumentSeed, error)
+    ListSubAccounts(ctx context.Context, creds []byte) ([]SubAccount, error)
+    Sync(ctx context.Context, creds []byte, subAccountID string) ([]Position, error)
+    ResolveInstrument(ctx context.Context, creds []byte, nativeID string) (InstrumentSeed, error)
 }
 ```
 
 ### 2.2. Price providers (откуда берём цены)
 
-Раздельный слой, не привязан к position source.
+Раздельный слой, не привязан к position source. В отличие от MVP-наброска,
+цены не подтягиваются «лениво при запросе `/portfolio`», а пушатся
+расписанием из отдельного бинаря `apps/cron` (см. §4) через admin-эндпоинты
+API. Сам API хранит последний снимок в `prices` и просто читает его при
+расчёте портфеля.
 
-| Asset class | Провайдер | Notes |
+| Asset class | Провайдер | Источник в коде |
 |---|---|---|
-| RU stocks/bonds/ETF | T-Invest `MarketDataService.GetLastPrices` | Используем тот же gRPC |
-| Crypto | CoinGecko (free, no auth) | Бесплатно, лимит 30 req/min |
-| US stocks | Finnhub / Yahoo (отложено) | Решается когда появятся не-T-Invest US-позиции |
-| FX (RUB↔USD) | ЦБ РФ XML daily | `cbr.ru/scripts/XML_daily.asp` |
-| USDT/USD | Фиксированно 1:1 | Приближение, погрешность <0.1% |
+| `ru_stock`, `ru_bond`, `ru_etf` | T-Invest `MarketDataService.GetLastPrices` (REST) | `internal/source/tinvest` + `apps/cron` |
+| `us_stock`, `us_etf` | Finnhub (`finnhub.io`) | `apps/cron` |
+| `crypto` | Bybit public market data (`/v5/market/tickers`) | `apps/cron` |
+| FX (`USD/RUB`, `EUR/RUB`, …) | ЦБ РФ XML daily (`cbr.ru/scripts/XML_daily.asp`) | `apps/cron` + `internal/fx` |
+| Stablecoins (USDT, USDC) и `cash` в нативной валюте | Хардкод 1:1 | API-сервис `internal/portfolio` |
 
-Архитектурный интерфейс:
-
-```go
-type PriceProvider interface {
-    GetPrices(ctx context.Context, instruments []Instrument) (map[InstrumentID]Money, error)
-}
-```
-
-Роутинг: по `instrument.asset_class` → выбор провайдера.
+Routing — по `instrument.asset_class`.
 
 ---
 
@@ -99,46 +107,126 @@ type PriceProvider interface {
 - **Конвертация**: на лету через таблицу `fx_rates`. Запрос `total в USD`:
   `SUM(quantity × price × fx_to_usd)` — один JOIN.
 
-### 3.5. Схема (черновик)
+### 3.5. Схема
 
 ```sql
-users               (id, email, password_hash, created_at)
-sessions            (token, user_id, expires_at, last_seen_at)
+users               (id, email, password_hash, display_currency, created_at, updated_at)
+sessions            (token_hash BYTEA PK, user_id, expires_at, last_seen_at, created_at)
 
-accounts            (id, user_id, source_type, name, last_synced_at)
-account_credentials (account_id PK, ciphertext BYTEA, nonce BYTEA, key_version, updated_at)
+accounts            (id, user_id, source_type, name,
+                     last_synced_at, last_sync_status, last_sync_error,
+                     created_at, updated_at)
+                    -- source_type IN ('manual','tinvest','bybit','binance')
+account_credentials (account_id PK, ciphertext BYTEA, nonce BYTEA, key_version,
+                     created_at, updated_at)
 
-instruments              (id, ticker, asset_class, currency, name)
-instrument_external_ids  (source, native_id, instrument_id, PRIMARY KEY(source, native_id))
+instruments              (id, ticker, asset_class, currency, name,
+                          created_at, updated_at)
+                         -- asset_class IN ('ru_stock','ru_bond','ru_etf',
+                         --                 'us_stock','us_etf','crypto','cash')
+                         -- UNIQUE (LOWER(ticker), asset_class)
+instrument_external_ids  (source, native_id, instrument_id,
+                          PRIMARY KEY(source, native_id))
 
-positions  (account_id, instrument_id, quantity NUMERIC(38,18), updated_at)
-prices     (instrument_id, ts, price NUMERIC(20,8))
-fx_rates   (date, from_ccy, to_ccy, rate NUMERIC(20,10))
+positions  (account_id, instrument_id, quantity NUMERIC(38,18),
+            created_at, updated_at,
+            PRIMARY KEY(account_id, instrument_id))
+prices     (instrument_id PK, price NUMERIC(20,8), fetched_at)
+fx_rates   (date, from_ccy, to_ccy, rate NUMERIC(20,10),
+            PRIMARY KEY(date, from_ccy, to_ccy))
+
+deposits   (id, user_id, month DATE, amount NUMERIC(20,0),
+            created_at, updated_at)
+           -- month = первое число месяца (CHECK date_trunc)
+           -- amount > 0
 ```
+
+Заметки:
+- `cash` как asset_class добавлен миграцией 0003 — отдельные строки для
+  валютных остатков (`RUB`, `USD`, `EUR`) с `price=1.00` в нативной валюте,
+  чтобы баланс на брокерском счёте попадал в агрегаты.
+- Таблицы `portfolios` / `portfolio_accounts` (заложенные в первоначальном
+  дизайне для "named портфелей") **удалены** миграцией 0004. Портфель
+  пересчитывается on-the-fly по всем accounts юзера; именованные группы
+  отложены до явной потребности.
+- Уникальность инструмента — `UNIQUE(LOWER(ticker), asset_class)`
+  (миграция 0002), что разводит `MMM/us_stock` и `MMM/ru_stock`, но
+  делает `POST /instruments` идемпотентным.
+
+### 3.6. Deposits (журнал пополнений)
+
+Отдельная сущность — фиксирует помесячные взносы пользователя в условной
+"эффективной" валюте учёта. Таблица минимальна (`user_id`, `month`,
+`amount`) и существует ради будущего расчёта доходности (TWR/XIRR), для
+которого нужна история cash flows. На MVP UI показывает её как простой
+список и используется при оценке "сколько вложено" на дашборде.
+
+- `month` хранится как первое число месяца (CHECK), чтобы один депозит
+  за период был естественно один — без дубликатов на разные дни.
+- `amount` — `NUMERIC(20, 0)` (целые копейки/рубли — фиксированная
+  валюта учёта пользователя).
+- Удаление — hard, без soft-delete и без редактирования (создал-удалил-
+  пересоздал, если ошибся).
 
 ---
 
 ## 4. Синхронизация
 
-### 4.1. Позиции (меняются редко)
+Реализация разделена между двумя процессами:
 
-- Cron в фоне каждый час + кнопка "Обновить" в UI на странице аккаунта.
-- Архитектура: одна goroutine с `time.NewTicker` внутри API-процесса.
-  Не выделяем отдельный бинарь worker.
+- **`apps/api`** — внутренний `robfig/cron/v3` scheduler в `internal/scheduler/`,
+  который раз в час пробегает по всем брокерским аккаунтам и подтягивает
+  свежие позиции (плюс служебный sessions cleanup и daily FX refetch).
+- **`apps/cron`** — отдельный одноразовый Go-бинарь, запускаемый Railway
+  Cron по расписанию. Он наполняет каталог инструментов, актуальные цены и
+  курсы валют через admin-эндпоинты API. Не работает в фоне — отрабатывает
+  все шаги и завершается.
 
-### 4.2. Цены (меняются постоянно)
+### 4.1. Позиции (cron в API + on-demand)
 
-- **Lazy cache** с TTL per asset_class:
-  - crypto: 60s
-  - stocks: 5min
-  - FX: 1h
-- При HTTP-запросе на `/portfolio` для каждой позиции проверяется
-  `prices.fetched_at`; устаревшие подгружаются батчем; UPSERT в БД.
-- WebSocket-стримы — отложено (M5+).
+- Внутренний scheduler API: `0 * * * *` — `syncerSvc.SyncAll()` обходит
+  accounts с `source_type IN ('tinvest','bybit','binance')`.
+- On-demand: `POST /accounts/:id/sync` — синхронный, ждёт результат.
+- На создание T-Invest аккаунта — async первый sync сразу после INSERT
+  (`lastSyncStatus='pending'`).
+- Применение снимка — одна транзакция: UPSERT текущих позиций + DELETE
+  ушедших + UPDATE `last_sync_*`. Concurrency-защита —
+  `pg_try_advisory_xact_lock(hashtext('sync:'||account_id))`.
+- В рамках того же sync собираются `instrument_id` всех новых позиций и
+  для T-Invest сразу UPSERT-ятся цены через `MarketDataService.GetLastPrices`.
+
+### 4.2. Цены и каталог инструментов (бинарь `apps/cron`)
+
+`apps/cron/cmd/cron/main.go` — однопроходный воркер. Запускается Railway
+Cron, делает все шаги последовательно и `os.Exit`. Аутентифицируется на
+API через `Authorization: Bearer ${ADMIN_API_KEY}`.
+
+Шаги:
+
+1. Загрузить статический seed инструментов (US акции/ETF, облигации) из
+   embedded JSON.
+2. Подтянуть актуальный список MOEX-инструментов из T-Invest (если задан
+   `TINVEST_TOKEN`).
+3. Подтянуть USDT-spot инструменты Bybit (public market data).
+4. `POST /admin/instruments` — UPSERT каталога.
+5. `GET /admin/instruments` — verify.
+6. Котировки: Finnhub для `us_stock`/`us_etf`, T-Invest для MOEX,
+   Bybit public для `crypto`. `cash` instrument-ы получают цену 1.00.
+7. `POST /admin/prices` — UPSERT в `prices`.
+8. ЦБ РФ XML → курсы валют.
+9. `POST /admin/fx` — UPSERT в `fx_rates`.
+10. Exit.
+
+Это push-модель: API больше не лезет за ценами при запросе `/portfolio`
+(старая идея «lazy cache с TTL» отменена). Если cron не отработал, в
+`/portfolio` поля `priceFetchedAt` стареют, и API помечает позицию
+`priceStale=true`.
 
 ### 4.3. FX курсы
 
-- Cron daily, тянет XML с ЦБ, UPSERT в `fx_rates`.
+- Daily — внутренним scheduler-ом API (`0 6 * * *`), плюс ещё раз через
+  тот же `apps/cron` (overlap намеренный — гарантия свежих курсов
+  независимо от того, какой из процессов жив).
 
 ---
 
@@ -165,10 +253,37 @@ fx_rates   (date, from_ccy, to_ccy, rate NUMERIC(20,10))
 ## 6. API контракт
 
 - **OpenAPI 3.x** — единый источник правды (`api/openapi.yaml`).
-- Бэк: `oapi-codegen` генерит chi-handlers интерфейсы; реализация — вручную.
-- Фронт: `orval --client vue-query` генерит TS-клиент с готовыми
-  `useXxxQuery` / `useXxxMutation` хуками для TanStack Query.
-- Swagger/Scalar UI на `/docs` для ручного дёрганья.
+- Бэк: `oapi-codegen` (strict-server + chi-server) генерит интерфейсы
+  в `internal/server/oapi/`; реализация — вручную в `internal/server/handlers.go`.
+- Фронт: `orval --client vue-query` (через mutator
+  `apps/web/src/api/mutator.ts`) генерит TS-клиент с готовыми
+  `useXxxQuery` / `useXxxMutation` хуками в `apps/web/src/api/generated/`.
+
+Текущие пути (по тегам):
+
+- **auth**: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`.
+- **accounts**: `GET/POST /accounts`, `GET/PUT/DELETE /accounts/{id}`,
+  `POST /accounts/tinvest/preview`, `POST /accounts/{id}/sync`.
+- **positions**: `GET /accounts/{id}/positions`,
+  `POST /accounts/{id}/positions`,
+  `PUT/DELETE /accounts/{id}/positions/{instrumentId}`.
+- **instruments**: `GET /instruments` (с фильтром+пагинацией),
+  `GET /instruments/search`.
+- **portfolio**: `GET /portfolio?currency=...`.
+- **deposits**: `GET/POST /deposits`, `DELETE /deposits/{id}`.
+- **system**: `GET /healthz`.
+
+Admin-эндпоинты для cron-воркера живут вне OpenAPI спеки и регистрируются
+напрямую в `internal/server/admin.go` (chi routes под middleware
+`auth.RequireAdmin(ADMIN_API_KEY)`):
+
+- `POST /admin/instruments` — bulk UPSERT каталога + `instrument_external_ids`.
+- `GET /admin/instruments` — verify.
+- `POST /admin/prices` — bulk UPSERT в `prices`.
+- `POST /admin/fx` — bulk UPSERT в `fx_rates`.
+
+Они нарочно не в публичной OpenAPI: их клиент — только наш собственный
+`apps/cron`, отдельный контракт между процессами не нужен.
 
 ---
 
@@ -192,79 +307,146 @@ fx_rates   (date, from_ccy, to_ccy, rate NUMERIC(20,10))
 | Слой | Выбор |
 |---|---|
 | Build | Vite |
-| UI | Vue 3 (Composition API, `<script setup>`) + shadcn-vue + Tailwind v4 |
-| State (client) | Pinia |
-| State (server) | TanStack Query (vue-query) |
+| UI | Vue 3 (Composition API, `<script setup>`) + Tailwind v4 |
+| Component primitives | radix-vue (headless) + собственные обёртки в `components/ui/` |
+| Icons | lucide-vue-next |
+| State (client) | Pinia (v3) + `pinia-plugin-persistedstate` |
+| State (server) | TanStack Query (vue-query v5) |
+| Composables | `@vueuse/core` (см. §8.2 и `docs/vueuse.md`) |
 | Routing | vue-router (history mode) |
-| API client | orval из OpenAPI |
-| Forms | vee-validate + zod |
+| API client | orval из OpenAPI (`vue-query` client, custom fetch mutator) |
+| Forms | vee-validate + zod (`@vee-validate/zod`) |
+| Toasts | vue-sonner |
 | Tests | Vitest (unit + component). Playwright **отложен**. |
 | Package manager | pnpm |
 | TS | strict + noUncheckedIndexedAccess |
 
 Разделение state:
 - **Server-state** (списки, дашборд, цены) — TanStack Query.
-- **Client-state** (выбранная валюта, UI флаги) — Pinia.
+- **Client-state** (выбранная валюта, UI-флаги, тема) — Pinia.
+
+UI-примитивы — небольшая собственная библиотека (`button`, `card`,
+`checkbox`, `confirm`, `dialog`, `input`, `label`, `table`) поверх
+radix-vue. CLI `shadcn-vue` для добавления компонентов **не используется**:
+тяжёлые / редкие компоненты не нужны, а написать тонкую обёртку проще,
+чем тащить генератор и оверрайдить его шаблоны.
 
 ### 8.1. Tailwind conventions
 
 - Брать значения только из стандартной шкалы Tailwind (`gap-1`, `text-sm`, `w-48`, `rounded-md` и т.п.). Не вводить новые arbitrary values в квадратных скобках (`gap-[3px]`, `text-[12.5px]`, `w-[188px]`).
 - Если точного значения в стандартной шкале нет — выбрать ближайший токен или предложить пользователю варианты. Не вписывать `[Npx]` молча.
 
+### 8.2. VueUse
+
+Перед написанием ручной обёртки над `ref`/`watch`/DOM/Storage — проверить
+готовый composable в `@vueuse/core` (`useToggle`, `useStorage`,
+`useMediaQuery`, `useEventListener` и т. д.). Каталог типовых соответствий
+и правила использования — `docs/vueuse.md`.
+
+### 8.3. Mobile
+
+UI адаптирован под мобильные viewport-ы — sidebar становится off-canvas
+(toggle через Pinia `useUiStore`), таблицы переходят в card-вид,
+sticky-summary на дашборде отключён на узких экранах (см. коммит
+`fix(web): drop sticky summary on mobile dashboard`). Адаптация целиком
+делается через Tailwind responsive-utilities (`md:`, `lg:`); отдельный
+JS-определитель «mobile» специально не вводится.
+
 ---
 
 ## 9. Структура репозитория
 
-Monorepo, pnpm-workspace.
+Monorepo, pnpm-workspace. `apps/web` — единственный пакет в pnpm workspace;
+`apps/api` и `apps/cron` — независимые Go-модули.
 
 ```
 omnifolio/
   api/
-    openapi.yaml                # source of truth контракта
+    openapi.yaml                # source of truth публичного контракта
   apps/
-    api/                        # Go backend
+    api/                        # Go backend (chi + sqlc + oapi-codegen)
       cmd/api/main.go
       internal/
-        server/                 # chi + handlers (oapi-codegen)
-        sync/                   # cron + position sync
-        price/                  # price providers + cache
-        fx/                     # ЦБ FX cron
-        auth/                   # session + argon2
-        domain/                 # entities, value objects
-        storage/                # sqlc generated + repositories
-      migrations/*.sql          # goose
+        config/                 # envconfig
+        server/                 # chi router, handlers, admin, problem
+          oapi/                 # oapi-codegen generated
+        auth/                   # users + sessions + argon2 + middleware
+        crypto/                 # AES-GCM, HKDF
+        account/                # accounts + credentials services
+        instrument/             # canonical instruments + external_ids
+        position/               # positions service (manual CRUD)
+        portfolio/              # /portfolio aggregation (read-only)
+        deposits/               # deposits CRUD
+        fx/                     # ЦБ FX fetch + lookups
+        scheduler/              # robfig/cron jobs registration
+        syncer/                 # position sync orchestration
+        source/                 # PositionSource implementations
+          tinvest/
+          bybit/
+          binance/
+        storage/
+          migrations/*.sql      # goose
+          queries/*.sql         # sqlc inputs
+          *.sql.go              # sqlc generated
       sqlc.yaml
       go.mod
-    web/                        # Vue frontend
+    web/                        # Vue 3 SPA
       src/
+        api/                    # orval-generated + mutator
         components/
-        composables/
-        routes/
-        stores/
-        api/                    # orval-generated
+          layout/
+          ui/                   # button, card, dialog, table, ...
+        features/
+          auth/ account/ dashboard/ deposits/ instrument/ settings/
+        lib/                    # utils, formatters, http-error
+        stores/                 # auth.ts, ui.ts (pinia)
+        router.ts
+        App.vue main.ts
       orval.config.ts
       vite.config.ts
       package.json
-  compose.yml                   # dev (postgres + api + web vite)
-  compose.prod.yml              # prod (postgres + api + caddy)
-  Caddyfile
+    cron/                       # отдельный Go-бинарь
+      cmd/cron/main.go
+      go.mod
+  compose.yml                   # dev (postgres + api + опционально cron)
   pnpm-workspace.yaml
-  Makefile                      # generate / migrate / dev / test / build
-  .github/workflows/ci.yml
+  Makefile                      # generate / dev / services / test / build
   docs/
     design.md                   # этот файл
+    railway.md                  # ops по Railway
+    vueuse.md                   # таблица соответствий и правила использования
 ```
 
 ---
 
 ## 10. Деплой
 
-- **Прод**: один VPS, `docker compose up -d`.
-- **Reverse proxy**: Caddy с auto-HTTPS (Let's Encrypt в одну директиву).
-- **Serving**: Caddy раздаёт статику фронта (`apps/web/dist`), проксирует `/api/*` на API-контейнер.
-- **Postgres**: в контейнере, volume на хосте.
-- **Backup**: `pg_dump` в cron на хосте + ротация (TODO в M5).
-- **k8s/PaaS не используем** — single-user, одна машина.
+Рантайм — **Railway** (PaaS). Single-user, инфраструктура минимальна;
+управляется без k8s. Полное операционное руководство — `docs/railway.md`.
+
+Сервисы в Railway:
+
+- `api` — собирается из `apps/api/Dockerfile`, watch pattern на `apps/api/**`.
+  Слушает `:8080`, healthcheck — `GET /healthz`. На старте автоматически
+  применяет goose-миграции.
+- `web` — собирается из `apps/web/Dockerfile` (Vite build), watch pattern
+  на `apps/web/**` и `api/**` (изменение OpenAPI триггерит ребилд фронта
+  через orval). Раздаёт статику и проксирует `/api/*` на сервис `api`
+  через Railway internal networking.
+- `cron` — собирается из `apps/cron/Dockerfile`, запускается Railway Cron
+  по расписанию (см. `docs/railway.md`). Не держит долгоживущего HTTP-
+  сервера — отрабатывает свои шаги (см. §4.2) и завершается.
+- `postgres` — managed plugin Railway.
+
+Auto-deploy — с `main`. Секреты (`DATABASE_URL`, `MASTER_KEY`,
+`SESSION_SECRET`, `ADMIN_API_KEY`, `TINVEST_TOKEN`, `FINNHUB_API_KEY`,
+`BOOTSTRAP_USER_*`) — в Railway env vars.
+
+**Backup**: managed Postgres-плагин делает снимки сам; собственный
+`pg_dump`-cron не вводим — это ответственность Railway.
+
+**Reverse proxy / TLS**: Railway раздаёт публичный домен с auto-HTTPS,
+своего Caddy/Nginx нет.
 
 ---
 
@@ -281,51 +463,56 @@ omnifolio/
 
 ## 12. MVP Roadmap
 
-### M0 — Skeleton (1–2 дня)
-- Monorepo по layout. compose.yml. Caddyfile (опционально для dev).
-- pnpm-workspace, Makefile, CI workflow.
-- Healthcheck `/healthz`, hello-world Vue страница, shadcn-vue button.
+### M0 — Skeleton ✅
+- Monorepo по layout. `compose.yml` для dev. pnpm-workspace, Makefile.
+- Healthcheck `/healthz`, hello-world Vue.
 
-### M1 — Manual portfolio + auth (3–5 дней)
-- Goose миграции всей схемы из §3.5.
-- Auth: argon2id, sessions, middleware, `/login` `/me` `/logout`.
-- OpenAPI: `/accounts` (CRUD type=manual), `/accounts/:id/positions`,
-  `/portfolio` (агрегация), `/instruments/search`.
+### M1 — Manual portfolio + auth ✅
+- Goose миграции схемы (см. §3.5). Auth: argon2id, sessions, middleware,
+  `/login` `/me` `/logout`.
+- OpenAPI: `/accounts` (CRUD), `/accounts/:id/positions`, `/portfolio`,
+  `/instruments`, `/instruments/search`.
 - sqlc queries, service layer, chi handlers.
-- ЦБ FX cron daily.
-- Frontend: login, dashboard (table + total), accounts page (CRUD).
-- **Acceptance**: руками завести manual-аккаунт, добавить AAPL × 10 @ 200 USD,
-  увидеть total в RUB.
+- Frontend: login, dashboard, accounts page (CRUD), instruments page.
 
-### M2 — T-Invest source (3–5 дней)
-- gRPC клиент к T-Invest.
-- `TInvestPositionSource` (Sync + Resolve).
-- `TInvestPriceProvider` для RU инструментов.
-- AES-GCM encryption для credentials.
-- UI: account type=tinvest, форма для readonly-токена, кнопка "Sync now".
-- Background sync cron 1h.
-- **Acceptance**: завести T-Invest token → увидеть реальные позиции и стоимость.
+### M2 — T-Invest source ✅
+- REST-клиент к T-Invest (`internal/source/tinvest`).
+- `TInvestPositionSource` (Sync + Resolve) + цены через
+  `MarketDataService.GetLastPrices` в рамках того же sync.
+- AES-GCM encryption для credentials, AAD = account_id.
+- Two-step preview flow при создании аккаунта (выбор sub-account).
+- UI: account type=tinvest, кнопка «Синхронизировать».
+- Hourly sync cron в API.
 
-### M3 — Bybit source + crypto prices (2–3 дня)
+### M3 — Bybit + Binance + crypto prices ✅
 - `BybitPositionSource` через REST + HMAC.
-- `CoinGeckoPriceProvider` для крипты.
-- UI: account type=bybit, форма api_key + api_secret.
-- **Acceptance**: завести Bybit read-only key → увидеть крипто-холдинги.
+- `BinancePositionSource` через `/api/v3/account` (HMAC).
+- Crypto-цены — Bybit public market data (CoinGecko **не используется**).
+- UI: account type=bybit, type=binance — формы api_key + api_secret.
 
-### M4 — Lazy price cache polish (2 дня)
-- TTL per asset_class, batch fetch, retry/backoff.
-- UI: индикация "stale at HH:MM" при отказе провайдера.
+### M4 — Cron worker + admin push ✅
+- Вынесен отдельный бинарь `apps/cron`, который пушит инструменты, цены
+  и FX в API через `/admin/*` (Bearer `ADMIN_API_KEY`).
+- Lazy on-request fetch цен — заменён на push-модель.
+- API маркирует позиции `priceStale=true`, если `prices.fetched_at`
+  старше 24h (или нет FX rate).
 
-### M5 — Polish + prod (3–5 дней)
-- Pinia store для UI-state (selected currency).
-- Charts (asset_class breakdown, по аккаунтам).
-- `compose.prod.yml`, Caddy, MASTER_KEY ротация-инструкция в README.
-- Backup `pg_dump` cron на хосте.
-- **Release**: v0.1.
+### M5 — Polish + Railway ✅
+- Pinia store для UI-state (selected currency, theme, sidebar).
+- Адаптация под мобильные viewport-ы.
+- Deploy на Railway (api/web/cron/postgres). Auto-deploy с `main`.
+- Deposits фича — журнал ежемесячных пополнений.
+- Settings page.
+
+### В работе / следующее
+- Расчёт доходности (TWR/XIRR) поверх deposits + текущего портфеля.
+- Графики (asset_class breakdown, динамика total) — chart-библиотека пока
+  не выбрана.
+- Снапшоты портфеля (нужны как фундамент для динамики).
 
 ---
 
-## 13. Backlog (после v0.1)
+## 13. Backlog
 
 - IBKR интеграция (Client Portal Web API + gateway).
 - Snapshots / историчность портфеля (фундамент для TWR/XIRR).
@@ -333,19 +520,20 @@ omnifolio/
 - 2FA / multi-user UI / OAuth.
 - Дивиденды, корп. действия.
 - Налоговый учёт.
-- US-stocks через Finnhub/Yahoo (когда появятся не-T-Invest US-позиции).
 - On-chain кошельки (Metamask address tracking) — отдельный класс источников.
-- Mobile (PWA или native).
+- Mobile native / PWA (текущая web-адаптация — responsive, без offline).
+- BroadcastChannel logout-sync между табами.
 
 ---
 
 ## 14. Открытые мелочи (не блокеры)
 
-- Семантика частичного отказа: показать "N/A" или "stale at HH:MM" вместо
-  краха при недоступности source/provider.
-- Charts library: recharts-vue / vue-chartjs / unovis — выбор в M5.
-- US-stocks price provider: Finnhub vs Yahoo vs Polygon — решается при появлении US-позиций.
-- Backup retention policy: сколько дней хранить pg_dump'ы.
+- Семантика частичного отказа: уже частично реализовано через `priceStale`,
+  нужен общий feedback в UI при недоступности source при on-demand sync.
+- Chart library: recharts-vue / vue-chartjs / unovis — выбор откладывается
+  до момента, когда фича будет нужна.
+- Token rotation для брокерских аккаунтов — пока hard recreate
+  (см. §19.7), API для `PUT /accounts/:id/credentials` — backlog.
 
 ---
 
@@ -420,22 +608,30 @@ apps/api/
   internal/
     config/                     # envconfig.Config
     server/                     # chi mux, oapi-codegen impl, middleware, problem.go
-    auth/                       # users + sessions + crypto, service + errors
+      oapi/                     # generated (api.gen.go, types.gen.go, ...)
+    auth/                       # users + sessions, middleware, RequireAdmin
+    crypto/                     # AES-GCM, HKDF
     account/                    # accounts + credentials, service + errors
     portfolio/                  # /portfolio aggregation (read-only)
     instrument/                 # canonical instruments + external_ids
-    price/                      # PriceProvider interface, cache, providers/
-    fx/                         # ЦБ FX cron + lookups
+    position/                   # positions service (manual CRUD)
+    fx/                         # ЦБ FX fetch + lookups
+    scheduler/                  # robfig/cron registration
+    syncer/                     # position sync orchestration
+    source/                     # position sources (tinvest, bybit, binance)
+    deposits/                   # deposits CRUD
     storage/
+      migrations/*.sql          # goose, embedded //go:embed
       queries/*.sql             # все sqlc inputs
       *.sql.go                  # generated
       models.go                 # generated
       db.go                     # pgxpool + storage.New(pool)
-  migrations/
-    0001_initial.sql            # схема M1
   sqlc.yaml
   go.mod
 ```
+
+Миграции лежат в `internal/storage/migrations/` (а не на верхнем уровне
+модуля), чтобы embedding `//go:embed` шёл прямо из storage-пакета.
 
 - **Packaging**: by feature.
 - **Layering внутри feature**: `handler → service → repository`. Repository =
@@ -1423,4 +1619,78 @@ ALTER TABLE instruments ADD CONSTRAINT instruments_asset_class_check
 - last_sync_skipped_count counter — на M2 нет колонки.
 - Sandbox toggle — нет.
 
+---
 
+## 20. Реализованные изменения после M1-решений
+
+§15–§19 — слепки решений на момент интервью по соответствующим
+milestone-ам. Кодовая база с тех пор разошлась с ними в нескольких
+точках; ниже — сводка отклонений (актуальная истина выражена в §1–§14).
+
+### 20.1. Архитектура
+
+- **Cron вынесен в отдельный бинарь** `apps/cron`. В §4.2 предполагалось,
+  что цены подтягиваются «лениво» внутри API при HTTP-запросе на
+  `/portfolio` — это заменено на push-модель: бинарь пушит инструменты,
+  цены и FX через `/admin/*` эндпоинты. API при `/portfolio` ничего
+  снаружи не дёргает.
+- **Admin-эндпоинты `/admin/instruments`, `/admin/prices`, `/admin/fx`**
+  добавлены в `internal/server/admin.go`, защищены Bearer
+  `ADMIN_API_KEY`. В публичный OpenAPI они нарочно не входят.
+- **Отдельные пакеты `internal/scheduler`, `internal/syncer`** —
+  scheduler регистрирует robfig/cron-задачи (sessions cleanup, FX
+  refresh, hourly sync), syncer — сам флоу sync поверх PositionSource.
+
+### 20.2. Источники
+
+- **Binance** добавлен наравне с Bybit (`internal/source/binance/`,
+  миграция 0005 — расширила CHECK на `source_type`). В исходных
+  M3-решениях Binance не упоминался.
+- **CoinGecko не используется**. Цены крипты тянутся из Bybit public
+  market data в рамках того же бинаря `apps/cron`.
+- **Finnhub** добавлен как поставщик цен для `us_stock`/`us_etf` (в
+  §2.2 он был помечен «отложено»; теперь подключён в `apps/cron`).
+- **Manual — не source-пакет**. Ручные позиции пишутся напрямую в
+  `positions` через `position` service + соответствующий REST-флоу.
+  В §15.5 под него не выделено директории, и так и осталось.
+
+### 20.3. Схема и API
+
+- **Таблицы `portfolios` / `portfolio_accounts` удалены** миграцией
+  0004. Идея именованных портфелей (выпала из роадмапа) откладывается
+  до явной потребности; агрегация — всегда «всё по юзеру».
+- **Deposits фича** — новая таблица + эндпоинты `GET/POST /deposits`,
+  `DELETE /deposits/{id}`. В §3.5 / §15 её не было; добавлена как
+  фундамент под расчёт доходности (см. §3.6).
+- **Schema CreateAccountRequest** — единый объект с conditional required
+  по `type` (`token`+`tinvestAccountId` для tinvest, `apiKey`+`apiSecret`
+  для bybit/binance). Discriminated `oneOf` (как предлагалось в §19.2)
+  не используется — упрощает orval и UI-форму.
+- **`asset_class='cash'`** — добавлен миграцией 0003; описан в §19.4
+  и теперь действительно реализован.
+
+### 20.4. Frontend
+
+- **shadcn-vue CLI не используется**. Вместо неё — собственные тонкие
+  обёртки в `components/ui/` поверх radix-vue (см. §8). Перечень текущих
+  примитивов: `button, card, checkbox, confirm, dialog, input, label,
+  table`.
+- **Routes расширены**: добавлены `/deposits`, `/instruments`,
+  `/settings`. В §15.7 / §18.6 был только базовый набор `/`,
+  `/accounts`, `/accounts/:id`, `/login`.
+- **`@vueuse/core` принят в стек**. Появилась конвенция: перед ручной
+  обёрткой над `ref/watch/DOM/Storage` сначала проверить готовый
+  composable. Каталог соответствий — `docs/vueuse.md`.
+- **Mobile**: реализована responsive-адаптация (off-canvas sidebar,
+  card-layout таблиц на мобильных, snapshot dashboard без sticky).
+  В исходном плане раздел про мобилу отсутствовал.
+- **Charts**: ни одна chart-библиотека не подключена — фича
+  оставлена в открытых вопросах §14.
+
+### 20.5. Деплой
+
+- **Railway вместо VPS+Caddy** (см. §10). `compose.prod.yml` и
+  `Caddyfile` (упоминаемые в §9 / §10 первоначального дизайна) не
+  созданы и не нужны.
+- **Backups** — managed Railway Postgres плагин; собственный
+  `pg_dump`-cron, заявленный в M5, не реализован (и не планируется).
