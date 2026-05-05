@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import { VueQueryPlugin } from "@tanstack/vue-query";
 import App from "./App.vue";
 import { router } from "./router";
+import { useAuthStore } from "./stores/auth";
 import "./style.css";
 
 const app = createApp(App);
@@ -19,4 +20,7 @@ app.use(VueQueryPlugin, {
   },
 });
 app.use(router);
+
+await useAuthStore().bootstrap();
+await router.isReady();
 app.mount("#app");
