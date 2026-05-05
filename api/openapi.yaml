@@ -14,6 +14,7 @@ tags:
   - name: positions
   - name: instruments
   - name: portfolio
+  - name: deposits
 
 paths:
   /healthz:
@@ -381,6 +382,57 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /deposits:
+    get:
+      tags: [deposits]
+      summary: List user deposits
+      operationId: listDeposits
+      responses:
+        "200":
+          description: List of deposits ordered by month DESC, createdAt DESC
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [deposits]
+      summary: Create a deposit
+      operationId: createDeposit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDepositRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deposit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /deposits/{depositId}:
+    parameters:
+      - $ref: "#/components/parameters/DepositId"
+    delete:
+      tags: [deposits]
+      summary: Delete a deposit
+      operationId: deleteDeposit
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   parameters:
     AccountId:
@@ -392,6 +444,13 @@ components:
         format: uuid
     InstrumentId:
       name: instrumentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DepositId:
+      name: depositId
       in: path
       required: true
       schema:
@@ -786,6 +845,46 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PortfolioPosition"
+
+    Deposit:
+      type: object
+      required: [id, month, amount, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        month:
+          type: string
+          format: date
+          description: Always the first day of the month, e.g. 2026-05-01
+        amount:
+          type: string
+          description: Whole rubles, no decimals
+        createdAt:
+          type: string
+          format: date-time
+
+    DepositList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Deposit"
+
+    CreateDepositRequest:
+      type: object
+      required: [month, amount]
+      properties:
+        month:
+          type: string
+          format: date
+          description: Any date; the day is normalized to the first of the month server-side
+        amount:
+          type: string
+          pattern: "^[1-9][0-9]*$"
+          description: Whole positive rubles
 
   securitySchemes:
     sessionCookie:

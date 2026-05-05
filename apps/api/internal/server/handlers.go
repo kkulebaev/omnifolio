@@ -13,6 +13,7 @@ import (
 
 	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
+	"github.com/kkulebaev/omnifolio/api/internal/deposits"
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
@@ -546,6 +547,78 @@ func decimalMapToString(m map[string]decimal.Decimal) map[string]string {
 	return out
 }
 
+// ----- deposits -----
+
+func (s *serverImpl) ListDeposits(ctx context.Context, _ oapi.ListDepositsRequestObject) (oapi.ListDepositsResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.ListDeposits401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	rows, err := s.deps.Deposits.List(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]oapi.Deposit, len(rows))
+	for i, d := range rows {
+		items[i] = toOapiDeposit(d)
+	}
+	return oapi.ListDeposits200JSONResponse{Items: items}, nil
+}
+
+func (s *serverImpl) CreateDeposit(ctx context.Context, req oapi.CreateDepositRequestObject) (oapi.CreateDepositResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.CreateDeposit401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return createDepositValidationResp("missing body", nil), nil
+	}
+	amt, err := decimal.NewFromString(req.Body.Amount)
+	if err != nil || amt.Sign() <= 0 || !amt.IsInteger() {
+		return createDepositValidationResp("Invalid amount",
+			map[string]string{"amount": "must be a positive integer"}), nil
+	}
+
+	d, err := s.deps.Deposits.Create(ctx, user.ID, req.Body.Month.Time, amt)
+	if err != nil {
+		return nil, err
+	}
+	s.deps.Logger.Info("deposit: created", "user_id", user.ID, "deposit_id", d.ID)
+	return oapi.CreateDeposit201JSONResponse(toOapiDeposit(d)), nil
+}
+
+func (s *serverImpl) DeleteDeposit(ctx context.Context, req oapi.DeleteDepositRequestObject) (oapi.DeleteDepositResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.DeleteDeposit401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if err := s.deps.Deposits.Delete(ctx, user.ID, req.DepositId); err != nil {
+		if errors.Is(err, deposits.ErrNotFound) {
+			return oapi.DeleteDeposit404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("deposit")),
+			}, nil
+		}
+		return nil, err
+	}
+	s.deps.Logger.Info("deposit: deleted", "user_id", user.ID, "deposit_id", req.DepositId)
+	return oapi.DeleteDeposit204Response{}, nil
+}
+
+func toOapiDeposit(d deposits.Deposit) oapi.Deposit {
+	return oapi.Deposit{
+		Id:        d.ID,
+		Month:     openapi_types.Date{Time: d.Month},
+		Amount:    d.Amount.String(),
+		CreatedAt: d.CreatedAt,
+	}
+}
+
 // ----- mappers -----
 
 func toOapiUser(u auth.User) oapi.User {
@@ -719,6 +792,9 @@ func createPositionValidationResp(title string, fields map[string]string) oapi.C
 }
 func updatePositionValidationResp(title string, fields map[string]string) oapi.UpdatePosition422ApplicationProblemPlusJSONResponse {
 	return oapi.UpdatePosition422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func createDepositValidationResp(title string, fields map[string]string) oapi.CreateDeposit422ApplicationProblemPlusJSONResponse {
+	return oapi.CreateDeposit422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
 }
 // ----- strict server error handlers -----
 

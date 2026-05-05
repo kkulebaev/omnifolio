@@ -118,12 +118,37 @@ type CreateAccountRequest struct {
 	Type  AccountType `json:"type"`
 }
 
+// CreateDepositRequest defines model for CreateDepositRequest.
+type CreateDepositRequest struct {
+	// Amount Whole positive rubles
+	Amount string `json:"amount"`
+
+	// Month Any date; the day is normalized to the first of the month server-side
+	Month openapi_types.Date `json:"month"`
+}
+
 // CreatePositionRequest defines model for CreatePositionRequest.
 type CreatePositionRequest struct {
 	InstrumentId openapi_types.UUID `json:"instrumentId"`
 
 	// Quantity Decimal > 0 as string
 	Quantity string `json:"quantity"`
+}
+
+// Deposit defines model for Deposit.
+type Deposit struct {
+	// Amount Whole rubles, no decimals
+	Amount    string             `json:"amount"`
+	CreatedAt time.Time          `json:"createdAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Month Always the first day of the month, e.g. 2026-05-01
+	Month openapi_types.Date `json:"month"`
+}
+
+// DepositList defines model for DepositList.
+type DepositList struct {
+	Items []Deposit `json:"items"`
 }
 
 // Health defines model for Health.
@@ -257,6 +282,9 @@ type User struct {
 // AccountId defines model for AccountId.
 type AccountId = openapi_types.UUID
 
+// DepositId defines model for DepositId.
+type DepositId = openapi_types.UUID
+
 // InstrumentId defines model for InstrumentId.
 type InstrumentId = openapi_types.UUID
 
@@ -310,6 +338,9 @@ type UpdatePositionJSONRequestBody = UpdatePositionRequest
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
+// CreateDepositJSONRequestBody defines body for CreateDeposit for application/json ContentType.
+type CreateDepositJSONRequestBody = CreateDepositRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// List user accounts
@@ -351,6 +382,15 @@ type ServerInterface interface {
 	// Get current user
 	// (GET /auth/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// List user deposits
+	// (GET /deposits)
+	ListDeposits(w http.ResponseWriter, r *http.Request)
+	// Create a deposit
+	// (POST /deposits)
+	CreateDeposit(w http.ResponseWriter, r *http.Request)
+	// Delete a deposit
+	// (DELETE /deposits/{depositId})
+	DeleteDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId)
 	// Liveness probe
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -444,6 +484,24 @@ func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
 // Get current user
 // (GET /auth/me)
 func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List user deposits
+// (GET /deposits)
+func (_ Unimplemented) ListDeposits(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a deposit
+// (POST /deposits)
+func (_ Unimplemented) CreateDeposit(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a deposit
+// (DELETE /deposits/{depositId})
+func (_ Unimplemented) DeleteDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -829,6 +887,77 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// ListDeposits operation middleware
+func (siw *ServerInterfaceWrapper) ListDeposits(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDeposits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDeposit operation middleware
+func (siw *ServerInterfaceWrapper) CreateDeposit(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDeposit(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDeposit operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDeposit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "depositId" -------------
+	var depositId DepositId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "depositId", chi.URLParam(r, "depositId"), &depositId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "depositId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDeposit(w, r, depositId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealthz operation middleware
 func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
 
@@ -1124,6 +1253,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/auth/me", wrapper.GetMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/deposits", wrapper.ListDeposits)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/deposits", wrapper.CreateDeposit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/deposits/{depositId}", wrapper.DeleteDeposit)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/healthz", wrapper.GetHealthz)
@@ -1674,6 +1812,110 @@ func (response GetMe401ApplicationProblemPlusJSONResponse) VisitGetMeResponse(w 
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListDepositsRequestObject struct {
+}
+
+type ListDepositsResponseObject interface {
+	VisitListDepositsResponse(w http.ResponseWriter) error
+}
+
+type ListDeposits200JSONResponse DepositList
+
+func (response ListDeposits200JSONResponse) VisitListDepositsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDeposits401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListDeposits401ApplicationProblemPlusJSONResponse) VisitListDepositsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDepositRequestObject struct {
+	Body *CreateDepositJSONRequestBody
+}
+
+type CreateDepositResponseObject interface {
+	VisitCreateDepositResponse(w http.ResponseWriter) error
+}
+
+type CreateDeposit201JSONResponse Deposit
+
+func (response CreateDeposit201JSONResponse) VisitCreateDepositResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDeposit401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDeposit401ApplicationProblemPlusJSONResponse) VisitCreateDepositResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDeposit422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response CreateDeposit422ApplicationProblemPlusJSONResponse) VisitCreateDepositResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteDepositRequestObject struct {
+	DepositId DepositId `json:"depositId"`
+}
+
+type DeleteDepositResponseObject interface {
+	VisitDeleteDepositResponse(w http.ResponseWriter) error
+}
+
+type DeleteDeposit204Response struct {
+}
+
+func (response DeleteDeposit204Response) VisitDeleteDepositResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteDeposit401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDeposit401ApplicationProblemPlusJSONResponse) VisitDeleteDepositResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteDeposit404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteDeposit404ApplicationProblemPlusJSONResponse) VisitDeleteDepositResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetHealthzRequestObject struct {
 }
 
@@ -1815,6 +2057,15 @@ type StrictServerInterface interface {
 	// Get current user
 	// (GET /auth/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// List user deposits
+	// (GET /deposits)
+	ListDeposits(ctx context.Context, request ListDepositsRequestObject) (ListDepositsResponseObject, error)
+	// Create a deposit
+	// (POST /deposits)
+	CreateDeposit(ctx context.Context, request CreateDepositRequestObject) (CreateDepositResponseObject, error)
+	// Delete a deposit
+	// (DELETE /deposits/{depositId})
+	DeleteDeposit(ctx context.Context, request DeleteDepositRequestObject) (DeleteDepositResponseObject, error)
 	// Liveness probe
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
@@ -2228,6 +2479,87 @@ func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListDeposits operation middleware
+func (sh *strictHandler) ListDeposits(w http.ResponseWriter, r *http.Request) {
+	var request ListDepositsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDeposits(ctx, request.(ListDepositsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDeposits")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDepositsResponseObject); ok {
+		if err := validResponse.VisitListDepositsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDeposit operation middleware
+func (sh *strictHandler) CreateDeposit(w http.ResponseWriter, r *http.Request) {
+	var request CreateDepositRequestObject
+
+	var body CreateDepositJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDeposit(ctx, request.(CreateDepositRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDeposit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDepositResponseObject); ok {
+		if err := validResponse.VisitCreateDepositResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDeposit operation middleware
+func (sh *strictHandler) DeleteDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId) {
+	var request DeleteDepositRequestObject
+
+	request.DepositId = depositId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDeposit(ctx, request.(DeleteDepositRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDeposit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDepositResponseObject); ok {
+		if err := validResponse.VisitDeleteDepositResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealthz operation middleware
 func (sh *strictHandler) GetHealthz(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthzRequestObject
@@ -2333,57 +2665,62 @@ func (sh *strictHandler) GetPortfolio(w http.ResponseWriter, r *http.Request, pa
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

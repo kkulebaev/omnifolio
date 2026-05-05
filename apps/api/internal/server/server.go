@@ -13,6 +13,7 @@ import (
 
 	"github.com/kkulebaev/omnifolio/api/internal/account"
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
+	"github.com/kkulebaev/omnifolio/api/internal/deposits"
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
@@ -27,6 +28,7 @@ type Deps struct {
 	Instrument  *instrument.Service
 	Position    *position.Service
 	Portfolio   *portfolio.Service
+	Deposits    *deposits.Service
 	Syncer      *syncer.Service
 	Queries     *storage.Queries
 	AdminAPIKey string

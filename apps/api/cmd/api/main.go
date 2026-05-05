@@ -15,6 +15,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/auth"
 	"github.com/kkulebaev/omnifolio/api/internal/config"
 	"github.com/kkulebaev/omnifolio/api/internal/crypto"
+	"github.com/kkulebaev/omnifolio/api/internal/deposits"
 	"github.com/kkulebaev/omnifolio/api/internal/fx"
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
@@ -93,6 +94,7 @@ func run() error {
 	positionSvc := position.NewService(queries, accountSvc, instrumentSvc)
 	fxSvc := fx.NewService(queries, log)
 	portfolioSvc := portfolio.NewService(queries, fxSvc)
+	depositsSvc := deposits.NewService(pool)
 	syncerSvc := syncer.NewService(pool, encryptor, registry, log)
 
 	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
@@ -141,6 +143,7 @@ func run() error {
 		Instrument:  instrumentSvc,
 		Position:    positionSvc,
 		Portfolio:   portfolioSvc,
+		Deposits:    depositsSvc,
 		Syncer:      syncerSvc,
 		Queries:     queries,
 		AdminAPIKey: cfg.AdminAPIKey,
