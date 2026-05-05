@@ -31,6 +31,15 @@ type AccountCredential struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
+type Deposit struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Month     pgtype.Date
+	Amount    decimal.Decimal
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
 type FxRate struct {
 	Date    pgtype.Date
 	FromCcy string
