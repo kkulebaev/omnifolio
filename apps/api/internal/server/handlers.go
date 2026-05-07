@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/shopspring/decimal"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
 	"github.com/kkulebaev/omnifolio/api/internal/source"
+	"github.com/kkulebaev/omnifolio/api/internal/storage"
 )
 
 type serverImpl struct {
@@ -551,6 +554,81 @@ func decimalMapToString(m map[string]decimal.Decimal) map[string]string {
 		out[k] = v.String()
 	}
 	return out
+}
+
+func (s *serverImpl) GetPortfolioHistory(ctx context.Context, req oapi.GetPortfolioHistoryRequestObject) (oapi.GetPortfolioHistoryResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.GetPortfolioHistory401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	to := today
+	if req.Params.To != nil {
+		to = req.Params.To.Time
+	}
+	from := to.AddDate(0, 0, -90)
+	if req.Params.From != nil {
+		from = req.Params.From.Time
+	}
+	if from.After(to) {
+		return oapi.GetPortfolioHistory422ApplicationProblemPlusJSONResponse{
+			ValidationErrorApplicationProblemPlusJSONResponse: validationProblem("from must be on or before to", map[string]string{"from": "after to"}).build(),
+		}, nil
+	}
+
+	rows, err := s.deps.Queries.ListPortfolioSnapshotsByDateRange(ctx, storage.ListPortfolioSnapshotsByDateRangeParams{
+		UserID:         user.ID,
+		SnapshotDate:   pgtype.Date{Time: from, Valid: true},
+		SnapshotDate_2: pgtype.Date{Time: to, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list snapshots: %w", err)
+	}
+
+	points := make([]oapi.PortfolioSnapshot, 0, len(rows))
+	for _, r := range rows {
+		byAssetClass, err := decodeAmounts(r.ByAssetClass)
+		if err != nil {
+			return nil, fmt.Errorf("decode by_asset_class: %w", err)
+		}
+		byCurrency, err := decodeAmounts(r.ByCurrency)
+		if err != nil {
+			return nil, fmt.Errorf("decode by_currency: %w", err)
+		}
+		byAccount, err := decodeAmounts(r.ByAccount)
+		if err != nil {
+			return nil, fmt.Errorf("decode by_account: %w", err)
+		}
+		points = append(points, oapi.PortfolioSnapshot{
+			Date:            openapi_types.Date{Time: r.SnapshotDate.Time},
+			DisplayCurrency: r.DisplayCurrency,
+			GrandTotal:      r.GrandTotal.String(),
+			ByAssetClass:    byAssetClass,
+			ByCurrency:      byCurrency,
+			ByAccount:       byAccount,
+		})
+	}
+
+	return oapi.GetPortfolioHistory200JSONResponse{
+		CurrentDisplayCurrency: user.DisplayCurrency,
+		Points:                 points,
+	}, nil
+}
+
+func decodeAmounts(b []byte) (map[string]string, error) {
+	if len(b) == 0 {
+		return map[string]string{}, nil
+	}
+	m := map[string]string{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // ----- deposits -----

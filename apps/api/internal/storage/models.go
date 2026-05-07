@@ -64,6 +64,17 @@ type InstrumentExternalID struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type PortfolioSnapshot struct {
+	UserID          uuid.UUID
+	SnapshotDate    pgtype.Date
+	DisplayCurrency string
+	GrandTotal      decimal.Decimal
+	ByAssetClass    []byte
+	ByCurrency      []byte
+	ByAccount       []byte
+	CreatedAt       pgtype.Timestamptz
+}
+
 type Position struct {
 	AccountID    uuid.UUID
 	InstrumentID uuid.UUID

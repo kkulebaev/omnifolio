@@ -15,3 +15,6 @@ WHERE email = $1;
 
 -- name: CountUsers :one
 SELECT COUNT(*) FROM users;
+
+-- name: ListUserIDs :many
+SELECT id FROM users ORDER BY created_at;

@@ -260,6 +260,13 @@ type Portfolio struct {
 	Summary   PortfolioSummary    `json:"summary"`
 }
 
+// PortfolioHistory defines model for PortfolioHistory.
+type PortfolioHistory struct {
+	// CurrentDisplayCurrency User's `display_currency` right now (may differ from per-snapshot value)
+	CurrentDisplayCurrency string              `json:"currentDisplayCurrency"`
+	Points                 []PortfolioSnapshot `json:"points"`
+}
+
 // PortfolioPosition defines model for PortfolioPosition.
 type PortfolioPosition struct {
 	AccountId      openapi_types.UUID `json:"accountId"`
@@ -274,6 +281,25 @@ type PortfolioPosition struct {
 	Ticker         string             `json:"ticker"`
 	ValueDisplay   *string            `json:"valueDisplay"`
 	ValueNative    *string            `json:"valueNative,omitempty"`
+}
+
+// PortfolioSnapshot defines model for PortfolioSnapshot.
+type PortfolioSnapshot struct {
+	// ByAccount Sums in `displayCurrency` of this snapshot, keyed by account id
+	ByAccount map[string]string `json:"byAccount"`
+
+	// ByAssetClass Sums in `displayCurrency` of this snapshot
+	ByAssetClass map[string]string `json:"byAssetClass"`
+
+	// ByCurrency Native sums per currency (not converted)
+	ByCurrency map[string]string  `json:"byCurrency"`
+	Date       openapi_types.Date `json:"date"`
+
+	// DisplayCurrency Display currency at the moment of the snapshot
+	DisplayCurrency string `json:"displayCurrency"`
+
+	// GrandTotal Total in `displayCurrency` of this snapshot
+	GrandTotal string `json:"grandTotal"`
 }
 
 // PortfolioSummary defines model for PortfolioSummary.
@@ -390,6 +416,15 @@ type GetPortfolioParams struct {
 	Currency *string `form:"currency,omitempty" json:"currency,omitempty"`
 }
 
+// GetPortfolioHistoryParams defines parameters for GetPortfolioHistory.
+type GetPortfolioHistoryParams struct {
+	// From Inclusive start date (UTC). Defaults to 90 days before `to`.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive end date (UTC). Defaults to today.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // CreateAccountJSONRequestBody defines body for CreateAccount for application/json ContentType.
 type CreateAccountJSONRequestBody = CreateAccountRequest
 
@@ -473,6 +508,9 @@ type ServerInterface interface {
 	// Aggregated portfolio across all accounts
 	// (GET /portfolio)
 	GetPortfolio(w http.ResponseWriter, r *http.Request, params GetPortfolioParams)
+	// Daily portfolio snapshots within a date range
+	// (GET /portfolio/history)
+	GetPortfolioHistory(w http.ResponseWriter, r *http.Request, params GetPortfolioHistoryParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -596,6 +634,12 @@ func (_ Unimplemented) SearchInstruments(w http.ResponseWriter, r *http.Request,
 // Aggregated portfolio across all accounts
 // (GET /portfolio)
 func (_ Unimplemented) GetPortfolio(w http.ResponseWriter, r *http.Request, params GetPortfolioParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Daily portfolio snapshots within a date range
+// (GET /portfolio/history)
+func (_ Unimplemented) GetPortfolioHistory(w http.ResponseWriter, r *http.Request, params GetPortfolioHistoryParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1206,6 +1250,58 @@ func (siw *ServerInterfaceWrapper) GetPortfolio(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetPortfolioHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPortfolioHistoryParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioHistory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1378,6 +1474,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/portfolio", wrapper.GetPortfolio)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/portfolio/history", wrapper.GetPortfolioHistory)
 	})
 
 	return r
@@ -2377,6 +2476,60 @@ func (response GetPortfolio401ApplicationProblemPlusJSONResponse) VisitGetPortfo
 	return err
 }
 
+type GetPortfolioHistoryRequestObject struct {
+	Params GetPortfolioHistoryParams
+}
+
+type GetPortfolioHistoryResponseObject interface {
+	VisitGetPortfolioHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetPortfolioHistory200JSONResponse PortfolioHistory
+
+func (response GetPortfolioHistory200JSONResponse) VisitGetPortfolioHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioHistory401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetPortfolioHistory401ApplicationProblemPlusJSONResponse) VisitGetPortfolioHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioHistory422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetPortfolioHistory422ApplicationProblemPlusJSONResponse) VisitGetPortfolioHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// List user accounts
@@ -2439,6 +2592,9 @@ type StrictServerInterface interface {
 	// Aggregated portfolio across all accounts
 	// (GET /portfolio)
 	GetPortfolio(ctx context.Context, request GetPortfolioRequestObject) (GetPortfolioResponseObject, error)
+	// Daily portfolio snapshots within a date range
+	// (GET /portfolio/history)
+	GetPortfolioHistory(ctx context.Context, request GetPortfolioHistoryRequestObject) (GetPortfolioHistoryResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3023,67 +3179,99 @@ func (sh *strictHandler) GetPortfolio(w http.ResponseWriter, r *http.Request, pa
 	}
 }
 
+// GetPortfolioHistory operation middleware
+func (sh *strictHandler) GetPortfolioHistory(w http.ResponseWriter, r *http.Request, params GetPortfolioHistoryParams) {
+	var request GetPortfolioHistoryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPortfolioHistory(ctx, request.(GetPortfolioHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPortfolioHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPortfolioHistoryResponseObject); ok {
+		if err := validResponse.VisitGetPortfolioHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

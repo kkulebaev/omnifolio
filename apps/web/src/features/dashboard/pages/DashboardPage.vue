@@ -14,6 +14,7 @@ import { ChevronDown, Check, Layers } from "lucide-vue-next";
 import { useGetPortfolio } from "@/api/generated";
 import type { PortfolioPosition } from "@/api/generated/model/portfolioPosition";
 import { useUiStore } from "@/stores/ui";
+import PortfolioHistoryChart from "@/features/dashboard/components/PortfolioHistoryChart.vue";
 import {
   formatCompact,
   formatCurrency,
@@ -324,6 +325,8 @@ function pluralPositions(n: number): string {
         </div>
       </div>
     </div>
+
+    <PortfolioHistoryChart />
 
     <div class="px-4 sm:px-6 pt-4 pb-7">
       <div class="flex items-center justify-between mb-2.5 gap-2 flex-wrap">

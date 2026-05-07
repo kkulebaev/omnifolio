@@ -39,6 +39,7 @@ import type {
   CreatePositionRequest,
   Deposit,
   DepositList,
+  GetPortfolioHistoryParams,
   GetPortfolioParams,
   Health,
   InstrumentList,
@@ -46,6 +47,7 @@ import type {
   LoginRequest,
   NotFoundResponse,
   Portfolio,
+  PortfolioHistory,
   Position,
   SearchInstrumentsParams,
   TInvestPreviewRequest,
@@ -1344,6 +1346,92 @@ export function useGetPortfolio<TData = Awaited<ReturnType<typeof getPortfolio>>
  ): UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetPortfolioQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
+
+  return query;
+}
+
+
+
+
+
+
+
+export const getGetPortfolioHistoryUrl = (params?: GetPortfolioHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portfolio/history?${stringifiedParams}` : `/portfolio/history`
+}
+
+/**
+ * @summary Daily portfolio snapshots within a date range
+ */
+export const getPortfolioHistory = async (params?: GetPortfolioHistoryParams, options?: RequestInit): Promise<PortfolioHistory> => {
+
+  return fetcher<PortfolioHistory>(getGetPortfolioHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortfolioHistoryQueryKey = (params?: MaybeRef<GetPortfolioHistoryParams>,) => {
+    return [
+    'portfolio','history', ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPortfolioHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getPortfolioHistory>>, TError = UnauthorizedResponse | ValidationErrorResponse>(params?: MaybeRef<GetPortfolioHistoryParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortfolioHistory>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  getGetPortfolioHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortfolioHistory>>> = ({ signal }) => getPortfolioHistory(unref(params), { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioHistory>>, TError, TData>
+}
+
+export type GetPortfolioHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getPortfolioHistory>>>
+export type GetPortfolioHistoryQueryError = UnauthorizedResponse | ValidationErrorResponse
+
+
+/**
+ * @summary Daily portfolio snapshots within a date range
+ */
+
+export function useGetPortfolioHistory<TData = Awaited<ReturnType<typeof getPortfolioHistory>>, TError = UnauthorizedResponse | ValidationErrorResponse>(
+ params?: MaybeRef<GetPortfolioHistoryParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortfolioHistory>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient
+ ): UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetPortfolioHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

@@ -93,3 +93,27 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	)
 	return i, err
 }
+
+const listUserIDs = `-- name: ListUserIDs :many
+SELECT id FROM users ORDER BY created_at
+`
+
+func (q *Queries) ListUserIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listUserIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

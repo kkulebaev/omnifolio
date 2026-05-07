@@ -22,6 +22,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
+	"github.com/kkulebaev/omnifolio/api/internal/snapshot"
 	"github.com/kkulebaev/omnifolio/api/internal/source"
 	"github.com/kkulebaev/omnifolio/api/internal/source/binance"
 	"github.com/kkulebaev/omnifolio/api/internal/source/bybit"
@@ -96,6 +97,7 @@ func run() error {
 	portfolioSvc := portfolio.NewService(queries, fxSvc)
 	depositsSvc := deposits.NewService(pool)
 	syncerSvc := syncer.NewService(pool, encryptor, registry, log)
+	snapshotSvc := snapshot.NewService(queries, portfolioSvc, log)
 
 	created, err := authSvc.Bootstrap(rootCtx, auth.BootstrapInput{
 		Email:    cfg.BootstrapUserEmail,
@@ -130,6 +132,11 @@ func run() error {
 			Name: "sync-brokerage-accounts",
 			Spec: "0 * * * *",
 			Run:  syncerSvc.SyncAll,
+		},
+		scheduler.Job{
+			Name: "portfolio-snapshot-daily",
+			Spec: "0 9 * * *",
+			Run:  snapshotSvc.RunDaily,
 		},
 	); err != nil {
 		return fmt.Errorf("scheduler: %w", err)

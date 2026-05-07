@@ -382,6 +382,38 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /portfolio/history:
+    get:
+      tags: [portfolio]
+      summary: Daily portfolio snapshots within a date range
+      operationId: getPortfolioHistory
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Inclusive start date (UTC). Defaults to 90 days before `to`.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Inclusive end date (UTC). Defaults to today.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Portfolio history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioHistory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /deposits:
     get:
       tags: [deposits]
@@ -848,6 +880,55 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PortfolioPosition"
+
+    PortfolioSnapshot:
+      type: object
+      required:
+        [
+          date,
+          displayCurrency,
+          grandTotal,
+          byAssetClass,
+          byCurrency,
+          byAccount,
+        ]
+      properties:
+        date:
+          type: string
+          format: date
+        displayCurrency:
+          type: string
+          description: Display currency at the moment of the snapshot
+        grandTotal:
+          type: string
+          description: Total in `displayCurrency` of this snapshot
+        byAssetClass:
+          type: object
+          additionalProperties:
+            type: string
+          description: Sums in `displayCurrency` of this snapshot
+        byCurrency:
+          type: object
+          additionalProperties:
+            type: string
+          description: Native sums per currency (not converted)
+        byAccount:
+          type: object
+          additionalProperties:
+            type: string
+          description: Sums in `displayCurrency` of this snapshot, keyed by account id
+
+    PortfolioHistory:
+      type: object
+      required: [currentDisplayCurrency, points]
+      properties:
+        currentDisplayCurrency:
+          type: string
+          description: User's `display_currency` right now (may differ from per-snapshot value)
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortfolioSnapshot"
 
     Deposit:
       type: object
