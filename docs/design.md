@@ -317,8 +317,12 @@ API через `Authorization: Bearer ${ADMIN_API_KEY}`.
   многотабличные rows как и `/portfolio` handler.
 - Backfill ретроспективно невозможен (`positions` хранит только текущее
   состояние, без timeline). Первая точка для существующего юзера
-  появится в ближайший cron run; admin-эндпоинт ручного триггера на
-  MVP не вводим.
+  появляется в ближайший cron run или через ручной триггер
+  `POST /admin/snapshots/run` (Bearer `ADMIN_API_KEY`, тот же что у
+  `/admin/fx`) — последний выполняет `RunDaily` синхронно. Endpoint
+  пригодится и для re-runs после фикса в `Compute`: `ON CONFLICT DO
+  UPDATE` на `(user_id, snapshot_date)` делает повторные вызовы
+  идемпотентными в рамках UTC-дня.
 - Retention — вечно. Объём (~90KB/год/юзер) пренебрежим; downsampling
   и TTL — отложено до явной потребности.
 

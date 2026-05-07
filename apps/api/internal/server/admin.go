@@ -224,6 +224,30 @@ func (a *adminHandlers) upsertFXRates(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+type adminRunSnapshotResponse struct {
+	Status   string `json:"status"`
+	Duration string `json:"duration"`
+}
+
+// runSnapshot triggers RunDaily synchronously: iterates over all users and
+// upserts today's portfolio_snapshots row. Used to seed history right after
+// deploy or to re-run after a fix in Compute (ON CONFLICT DO UPDATE on the
+// snapshot table makes repeated calls within the same UTC day idempotent).
+func (a *adminHandlers) runSnapshot(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	if err := a.deps.Snapshot.RunDaily(r.Context()); err != nil {
+		a.deps.Logger.Error("admin: snapshot run failed", "err", err)
+		writeAdminError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	d := time.Since(start)
+	a.deps.Logger.Info("admin: snapshot run ok", "duration_ms", d.Milliseconds())
+	writeJSON(w, http.StatusOK, adminRunSnapshotResponse{
+		Status:   "ok",
+		Duration: d.String(),
+	})
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

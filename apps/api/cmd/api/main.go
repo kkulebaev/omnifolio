@@ -152,6 +152,7 @@ func run() error {
 		Portfolio:   portfolioSvc,
 		Deposits:    depositsSvc,
 		Syncer:      syncerSvc,
+		Snapshot:    snapshotSvc,
 		Queries:     queries,
 		AdminAPIKey: cfg.AdminAPIKey,
 		Logger:      log,

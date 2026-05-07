@@ -18,6 +18,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
+	"github.com/kkulebaev/omnifolio/api/internal/snapshot"
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
 	"github.com/kkulebaev/omnifolio/api/internal/syncer"
 )
@@ -30,6 +31,7 @@ type Deps struct {
 	Portfolio   *portfolio.Service
 	Deposits    *deposits.Service
 	Syncer      *syncer.Service
+	Snapshot    *snapshot.Service
 	Queries     *storage.Queries
 	AdminAPIKey string
 	Logger      *slog.Logger
@@ -65,6 +67,7 @@ func New(d Deps) (http.Handler, error) {
 		rt.Post("/instruments", admin.seedInstruments)
 		rt.Post("/prices", admin.upsertPrices)
 		rt.Post("/fx", admin.upsertFXRates)
+		rt.Post("/snapshots/run", admin.runSnapshot)
 	})
 
 	// User-facing API: OpenAPI validation + session middleware.
