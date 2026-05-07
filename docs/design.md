@@ -16,6 +16,7 @@
 доходности.
 
 - Что показываем: сколько всего сейчас, в каких активах, в каких валютах,
+  динамику суммарной стоимости портфеля (daily snapshots),
   плюс список deposits (помесячные взносы) — для будущего TWR/XIRR.
 - Что НЕ показываем (отложено): доходность во времени (TWR/XIRR), журнал сделок,
   P&L по позициям, налоговый учёт, ребалансировка, дивиденды, корпоративные действия.
@@ -23,6 +24,8 @@
 Решение строит модель данных вокруг текущего состояния (positions snapshot),
 а не вокруг истории транзакций. Deposits добавлены отдельной таблицей —
 это единственный счётчик «вложенных денег», независимый от позиций.
+Динамика во времени берётся из ежедневных снимков агрегата `/portfolio`
+(`portfolio_snapshots`, см. §3.7), а не из реконструкции по транзакциям.
 
 ---
 
@@ -138,6 +141,14 @@ deposits   (id, user_id, month DATE, amount NUMERIC(20,0),
             created_at, updated_at)
            -- month = первое число месяца (CHECK date_trunc)
            -- amount > 0
+
+portfolio_snapshots (user_id, snapshot_date DATE, display_currency,
+                     grand_total NUMERIC(24,8),
+                     by_asset_class JSONB, by_currency JSONB, by_account JSONB,
+                     created_at,
+                     PRIMARY KEY(user_id, snapshot_date))
+                    -- by_currency хранит НАТИВНЫЕ суммы по валютам;
+                    --   grand_total / by_asset_class / by_account — в display_currency снимка
 ```
 
 Заметки:
@@ -167,7 +178,35 @@ deposits   (id, user_id, month DATE, amount NUMERIC(20,0),
 - Удаление — hard, без soft-delete и без редактирования (создал-удалил-
   пересоздал, если ошибся).
 
-### 3.7. Конвенции БД
+### 3.7. Portfolio snapshots
+
+Ежедневный снимок агрегата `/portfolio` — фундамент под графики динамики
+стоимости портфеля. Не подменяет deposits / future trades log: это
+другая модель — daily snapshot **текущего** состояния, не история сделок.
+
+Таблица `portfolio_snapshots`:
+
+- **PK** — composite `(user_id, snapshot_date)` (по образцу `fx_rates`,
+  не surrogate UUID — натуральный time-series ключ).
+- `snapshot_date` — UTC `CURRENT_DATE` на момент запуска cron.
+- `display_currency` — что было у юзера в `users.display_currency` на
+  момент снимка. При смене валюты исторические точки **остаются в старой**;
+  фронт показывает их as-stored (см. §6 contract).
+- `grand_total` / `by_asset_class` / `by_account` — в `display_currency`
+  снимка (готовы к чтению без пересчёта).
+- `by_currency` — НАТИВНЫЕ суммы по валютам (`USD: 100`, `RUB: 5000`).
+  Это страховочное «сырьё»: если в будущем понадобится бесшовный пересчёт
+  истории в новый `display_currency` через исторические `fx_rates` —
+  материал уже сохранён.
+- UPSERT через `ON CONFLICT (user_id, snapshot_date) DO UPDATE` —
+  последний запуск выигрывает (полезно для повторных run-ов в течение дня
+  после fix-ов в Compute).
+- Skip-правила: если у юзера нет позиций или **все** позиции stale
+  (`grand_total = 0` при непустом `Positions`) — snapshot не пишется
+  (только log.warn). Частичная stale (одна-две позиции из 20) — пишем
+  как есть; на графике точка слегка просядет.
+
+### 3.8. Конвенции БД
 
 - **PK**: `UUIDv7` через `uuid.NewV7()` в Go. Postgres-side
   `gen_random_uuid()` (v4) не используется.
@@ -184,7 +223,7 @@ deposits   (id, user_id, month DATE, amount NUMERIC(20,0),
 - **Sessions PK**: `token_hash BYTEA(32)` — SHA-256 от 32 random bytes
   (cookie несёт base64url plaintext; в БД — только хеш).
 
-### 3.8. Lifecycle позиций и инструментов
+### 3.9. Lifecycle позиций и инструментов
 
 - **Position quantity** > 0 обязательно; удаление — DELETE, не
   `quantity=0`. Шорты (negative) — out of scope.
@@ -207,7 +246,8 @@ deposits   (id, user_id, month DATE, amount NUMERIC(20,0),
 
 - **`apps/api`** — внутренний `robfig/cron/v3` scheduler в `internal/scheduler/`,
   который раз в час пробегает по всем брокерским аккаунтам и подтягивает
-  свежие позиции (плюс служебный sessions cleanup и daily FX refetch).
+  свежие позиции (плюс служебный sessions cleanup, daily FX refetch и
+  daily portfolio snapshot — см. §4.4).
 - **`apps/cron`** — отдельный одноразовый Go-бинарь, запускаемый Railway
   Cron по расписанию. Он наполняет каталог инструментов, актуальные цены и
   курсы валют через admin-эндпоинты API. Не работает в фоне — отрабатывает
@@ -258,6 +298,29 @@ API через `Authorization: Bearer ${ADMIN_API_KEY}`.
 - Daily — внутренним scheduler-ом API (`0 6 * * *`), плюс ещё раз через
   тот же `apps/cron` (overlap намеренный — гарантия свежих курсов
   независимо от того, какой из процессов жив).
+
+### 4.4. Daily portfolio snapshot
+
+Раз в день внутренний scheduler API обходит всех юзеров и пишет в
+`portfolio_snapshots` агрегированный снимок их `/portfolio` (см. §3.7).
+
+- Spec: `0 9 * * *` UTC (полдень MSK). Слот выбран после того как
+  `apps/cron` на Railway уже отстрелял prices/fx и hourly position-sync
+  гарантированно прошёл.
+- Реализация: пакет `internal/snapshot/`. `Service.RunDaily(ctx)` —
+  список user-id из `users` (отдельный sqlc-query `ListUserIDs :many`)
+  → для каждого `RunForUser` → `portfolio.Compute(...)` →
+  `UpsertPortfolioSnapshot`.
+- Per-user error: `log.Error + continue`, в конце Job —
+  `errors.Join(...)` (один битый юзер не валит остальных).
+- Без транзакций — одиночный INSERT на юзера; `Compute` читает
+  многотабличные rows как и `/portfolio` handler.
+- Backfill ретроспективно невозможен (`positions` хранит только текущее
+  состояние, без timeline). Первая точка для существующего юзера
+  появится в ближайший cron run; admin-эндпоинт ручного триггера на
+  MVP не вводим.
+- Retention — вечно. Объём (~90KB/год/юзер) пренебрежим; downsampling
+  и TTL — отложено до явной потребности.
 
 ---
 
@@ -324,7 +387,10 @@ API через `Authorization: Bearer ${ADMIN_API_KEY}`.
   `PUT/DELETE /accounts/{id}/positions/{instrumentId}`.
 - **instruments**: `GET /instruments` (с фильтром+пагинацией),
   `GET /instruments/search`.
-- **portfolio**: `GET /portfolio?currency=...`.
+- **portfolio**: `GET /portfolio?currency=...`,
+  `GET /portfolio/history?from=&to=` (опциональны, default — последние
+  90 дней; ответ — массив daily snapshots с `displayCurrency` per точка
+  плюс верхнеуровневый `currentDisplayCurrency`).
 - **deposits**: `GET/POST /deposits`, `DELETE /deposits/{id}`.
 - **system**: `GET /healthz`.
 
@@ -402,9 +468,12 @@ Admin-эндпоинты для cron-воркера живут вне OpenAPI с
 
 UI-примитивы — небольшая собственная библиотека (`button`, `card`,
 `checkbox`, `confirm`, `dialog`, `input`, `label`, `table`) поверх
-radix-vue. CLI `shadcn-vue` для добавления компонентов **не используется**:
-тяжёлые / редкие компоненты не нужны, а написать тонкую обёртку проще,
-чем тащить генератор и оверрайдить его шаблоны.
+radix-vue. Простые компоненты добавляем как тонкие обёртки вручную;
+для сложных (например `chart`, который тянет `@unovis/ts` и `@unovis/vue`)
+допускаем `npx shadcn-vue@latest add <name>` — он подтягивает нужные
+зависимости и shadcn-style обёртки в `components/ui/`. Полный
+shadcn-CLI-режим не включаем: компоненты добавляются по факту, а не
+оптом.
 
 ### 8.1. Tailwind conventions
 
@@ -451,6 +520,7 @@ omnifolio/
         instrument/             # canonical instruments + external_ids
         position/               # positions service (manual CRUD)
         portfolio/              # /portfolio aggregation (read-only)
+        snapshot/               # daily portfolio snapshot job
         deposits/               # deposits CRUD
         fx/                     # ЦБ FX fetch + lookups
         scheduler/              # robfig/cron jobs registration
@@ -541,9 +611,9 @@ Auto-deploy — с `main`. Секреты (`DATABASE_URL`, `MASTER_KEY`,
 В работе / ближайшее:
 
 - Расчёт доходности (TWR/XIRR) поверх deposits + текущего портфеля.
-- Снапшоты портфеля — фундамент под динамику и TWR/XIRR.
-- Графики (asset_class breakdown, динамика total). Chart-библиотека
-  не выбрана — решается, когда фича понадобится.
+- Дополнительные графики поверх существующих `portfolio_snapshots`:
+  stacked-area `by_asset_class` / `by_currency`, разрез по аккаунтам.
+  Сейчас на dashboard рисуется только line `grand_total`.
 
 Дальше / без приоритета:
 
