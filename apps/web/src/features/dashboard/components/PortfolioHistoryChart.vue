@@ -9,8 +9,23 @@ import {
   VisArea,
 } from "@unovis/vue";
 import { useGetPortfolioHistory } from "@/api/generated";
-import { useUiStore } from "@/stores/ui";
 import { formatCompact, formatDate } from "@/lib/formatters";
+
+const xTickFmt = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "short",
+});
+
+function formatXTick(ts: number): string {
+  return xTickFmt.format(new Date(ts));
+}
+
+function formatYTick(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}М`;
+  if (abs >= 1_000) return `${Math.round(v / 1_000)}К`;
+  return `${Math.round(v)}`;
+}
 
 type Preset = "7d" | "30d" | "90d" | "1y" | "all";
 
@@ -21,7 +36,6 @@ type Point = {
   displayCurrency: string;
 };
 
-const ui = useUiStore();
 const preset = ref<Preset>("90d");
 
 const presets: { key: Preset; label: string }[] = [
@@ -143,8 +157,31 @@ function tooltipTemplate(d: Point): string {
     >
       Снимков пока нет — первая точка появится после ближайшего ночного запуска
     </div>
-    <div v-else class="rounded-lg border border-border bg-panel">
+    <div v-else class="rounded-lg border border-border bg-panel overflow-hidden">
       <VisXYContainer
+        class="md:hidden"
+        :data="points"
+        :height="160"
+        :margin="{ top: 8, right: 12, bottom: 20, left: 40 }"
+      >
+        <VisArea
+          :x="(d: Point) => d.ts"
+          :y="(d: Point) => d.total"
+          color="var(--color-accent)"
+          :opacity="0.15"
+        />
+        <VisLine
+          :x="(d: Point) => d.ts"
+          :y="(d: Point) => d.total"
+          color="var(--color-accent)"
+        />
+        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="3" />
+        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="3" />
+        <VisCrosshair :template="tooltipTemplate" />
+        <VisTooltip />
+      </VisXYContainer>
+      <VisXYContainer
+        class="hidden md:block"
         :data="points"
         :height="200"
         :margin="{ top: 12, right: 16, bottom: 24, left: 56 }"
@@ -160,16 +197,8 @@ function tooltipTemplate(d: Point): string {
           :y="(d: Point) => d.total"
           color="var(--color-accent)"
         />
-        <VisAxis
-          type="x"
-          :tick-format="(t: number) => formatDate(new Date(t))"
-          :num-ticks="5"
-        />
-        <VisAxis
-          type="y"
-          :tick-format="(v: number) => formatCompact(v, ui.displayCurrency)"
-          :num-ticks="4"
-        />
+        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="5" />
+        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="4" />
         <VisCrosshair :template="tooltipTemplate" />
         <VisTooltip />
       </VisXYContainer>
