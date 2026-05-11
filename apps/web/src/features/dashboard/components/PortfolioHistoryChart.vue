@@ -3,13 +3,38 @@ import { computed, ref } from "vue";
 import {
   VisXYContainer,
   VisLine,
-  VisAxis,
   VisCrosshair,
   VisTooltip,
   VisArea,
 } from "@unovis/vue";
 import { useGetPortfolioHistory } from "@/api/generated";
 import { formatCompact, formatDate } from "@/lib/formatters";
+
+function niceTicks(min: number, max: number, count: number): number[] {
+  if (
+    !Number.isFinite(min) ||
+    !Number.isFinite(max) ||
+    min >= max ||
+    count < 2
+  ) {
+    return Number.isFinite(min) ? [min] : [];
+  }
+  const rough = (max - min) / (count - 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  let nice: number;
+  if (norm < 1.5) nice = 1;
+  else if (norm < 3) nice = 2;
+  else if (norm < 7) nice = 5;
+  else nice = 10;
+  const step = nice * mag;
+  const start = Math.ceil(min / step) * step;
+  const ticks: number[] = [];
+  for (let v = start; v <= max + step * 1e-6; v += step) {
+    ticks.push(Number(v.toFixed(10)));
+  }
+  return ticks;
+}
 
 const xTickFmt = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
@@ -126,6 +151,60 @@ const formatYTick = computed(() => {
   return makeFormatYTick(d ? d[1] - d[0] : 0);
 });
 
+const X_LABEL_RESERVE_PCT = 18;
+
+const yTicks = computed<number[]>(() => {
+  const d = yDomain.value;
+  if (!d) return [];
+  const span = d[1] - d[0];
+  if (span <= 0) return [];
+  const cutoff = d[0] + span * (X_LABEL_RESERVE_PCT / 100);
+  return niceTicks(d[0], d[1], 4)
+    .filter((t) => t > cutoff && t < d[1])
+    .reverse();
+});
+
+const xTicks = computed<number[]>(() => {
+  const pts = points.value;
+  if (pts.length === 0) return [];
+  const first = pts[0].ts;
+  const last = pts[pts.length - 1].ts;
+  if (pts.length === 1 || first === last) return [first];
+  if (pts.length === 2) return [first, last];
+  return [first, (first + last) / 2, last];
+});
+
+function yPct(v: number): number {
+  const d = yDomain.value;
+  if (!d || d[1] === d[0]) return 50;
+  return (1 - (v - d[0]) / (d[1] - d[0])) * 100;
+}
+
+function xPct(ts: number): number {
+  const pts = points.value;
+  if (pts.length === 0) return 0;
+  const first = pts[0].ts;
+  const last = pts[pts.length - 1].ts;
+  if (first === last) return 50;
+  return ((ts - first) / (last - first)) * 100;
+}
+
+function yLabelStyle(i: number, n: number, t: number): Record<string, string> {
+  const pct = yPct(t);
+  let transform = "translateY(-50%)";
+  if (i === 0) transform = "translateY(0)";
+  else if (i === n - 1) transform = "translateY(-100%)";
+  return { top: `${pct}%`, transform };
+}
+
+function xLabelStyle(i: number, n: number, ts: number): Record<string, string> {
+  const pct = xPct(ts);
+  let transform = "translateX(-50%)";
+  if (i === 0) transform = "translateX(0)";
+  else if (i === n - 1) transform = "translateX(-100%)";
+  return { left: `${pct}%`, transform };
+}
+
 function tooltipTemplate(d: Point): string {
   const value = formatCompact(d.total, d.displayCurrency);
   const dateLabel = formatDate(d.date);
@@ -188,12 +267,15 @@ function tooltipTemplate(d: Point): string {
     >
       Снимков пока нет — первая точка появится после ближайшего ночного запуска
     </div>
-    <div v-else class="rounded-lg border border-border bg-panel overflow-hidden">
+    <div
+      v-else
+      class="relative rounded-lg border border-border bg-panel overflow-hidden"
+    >
       <VisXYContainer
         class="md:hidden"
         :data="points"
         :height="180"
-        :margin="{ top: 4, right: 4, bottom: 18, left: 36 }"
+        :margin="{ top: 0, right: 0, bottom: 0, left: 0 }"
         :y-domain="yDomain"
       >
         <VisArea
@@ -208,16 +290,14 @@ function tooltipTemplate(d: Point): string {
           :y="(d: Point) => d.total"
           color="var(--color-accent)"
         />
-        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="3" />
-        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="3" />
         <VisCrosshair :template="tooltipTemplate" />
         <VisTooltip />
       </VisXYContainer>
       <VisXYContainer
         class="hidden md:block"
         :data="points"
-        :height="200"
-        :margin="{ top: 12, right: 16, bottom: 24, left: 56 }"
+        :height="220"
+        :margin="{ top: 0, right: 0, bottom: 0, left: 0 }"
         :y-domain="yDomain"
       >
         <VisArea
@@ -232,11 +312,30 @@ function tooltipTemplate(d: Point): string {
           :y="(d: Point) => d.total"
           color="var(--color-accent)"
         />
-        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="5" />
-        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="4" />
         <VisCrosshair :template="tooltipTemplate" />
         <VisTooltip />
       </VisXYContainer>
+
+      <div
+        class="absolute inset-0 pointer-events-none text-xs text-muted-foreground"
+      >
+        <span
+          v-for="(t, i) in yTicks"
+          :key="`y-${t}`"
+          :style="yLabelStyle(i, yTicks.length, t)"
+          class="num absolute left-1 px-1 rounded-sm leading-none"
+        >
+          {{ formatYTick(t) }}
+        </span>
+        <span
+          v-for="(t, i) in xTicks"
+          :key="`x-${t}`"
+          :style="xLabelStyle(i, xTicks.length, t)"
+          class="num absolute bottom-1 px-1 rounded-sm leading-none"
+        >
+          {{ formatXTick(t) }}
+        </span>
+      </div>
     </div>
   </section>
 </template>
