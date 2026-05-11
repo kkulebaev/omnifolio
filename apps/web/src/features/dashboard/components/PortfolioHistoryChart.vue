@@ -192,8 +192,8 @@ function tooltipTemplate(d: Point): string {
       <VisXYContainer
         class="md:hidden"
         :data="points"
-        :height="160"
-        :margin="{ top: 8, right: 12, bottom: 20, left: 40 }"
+        :height="180"
+        :margin="{ top: 4, right: 4, bottom: 18, left: 36 }"
         :y-domain="yDomain"
       >
         <VisArea
