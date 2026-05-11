@@ -20,6 +20,7 @@ vendor/
 .vscode/
 .idea/
 .claude/
+.omc/
 *.swp
 .DS_Store
 
