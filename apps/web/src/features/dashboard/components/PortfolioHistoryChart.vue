@@ -20,11 +20,19 @@ function formatXTick(ts: number): string {
   return xTickFmt.format(new Date(ts));
 }
 
-function formatYTick(v: number): string {
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}М`;
-  if (abs >= 1_000) return `${Math.round(v / 1_000)}К`;
-  return `${Math.round(v)}`;
+function makeFormatYTick(range: number): (v: number) => string {
+  return (v) => {
+    const abs = Math.abs(v);
+    if (abs >= 1_000_000) {
+      const decimals = range < 100_000 ? 3 : range < 1_000_000 ? 2 : 1;
+      return `${(v / 1_000_000).toFixed(decimals)}М`;
+    }
+    if (abs >= 1_000) {
+      const decimals = range < 1_000 ? 2 : range < 10_000 ? 1 : 0;
+      return `${(v / 1_000).toFixed(decimals)}К`;
+    }
+    return `${Math.round(v)}`;
+  };
 }
 
 type Preset = "7d" | "30d" | "90d" | "1y" | "all";
@@ -95,6 +103,29 @@ const isEmpty = computed(
   () => !history.isLoading.value && points.value.length === 0,
 );
 
+const yDomain = computed<[number, number] | undefined>(() => {
+  const pts = points.value;
+  if (pts.length === 0) return undefined;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const p of pts) {
+    if (p.total < min) min = p.total;
+    if (p.total > max) max = p.total;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return undefined;
+  const span = max - min;
+  const padding =
+    span > 0 ? span * 0.08 : Math.max(Math.abs(max) * 0.01, 1);
+  return [min - padding, max + padding];
+});
+
+const yBaseline = computed(() => yDomain.value?.[0] ?? 0);
+
+const formatYTick = computed(() => {
+  const d = yDomain.value;
+  return makeFormatYTick(d ? d[1] - d[0] : 0);
+});
+
 function tooltipTemplate(d: Point): string {
   const value = formatCompact(d.total, d.displayCurrency);
   const dateLabel = formatDate(d.date);
@@ -163,10 +194,12 @@ function tooltipTemplate(d: Point): string {
         :data="points"
         :height="160"
         :margin="{ top: 8, right: 12, bottom: 20, left: 40 }"
+        :y-domain="yDomain"
       >
         <VisArea
           :x="(d: Point) => d.ts"
           :y="(d: Point) => d.total"
+          :baseline="yBaseline"
           color="var(--color-accent)"
           :opacity="0.15"
         />
@@ -185,10 +218,12 @@ function tooltipTemplate(d: Point): string {
         :data="points"
         :height="200"
         :margin="{ top: 12, right: 16, bottom: 24, left: 56 }"
+        :y-domain="yDomain"
       >
         <VisArea
           :x="(d: Point) => d.ts"
           :y="(d: Point) => d.total"
+          :baseline="yBaseline"
           color="var(--color-accent)"
           :opacity="0.15"
         />
