@@ -192,8 +192,8 @@ function tooltipTemplate(d: Point): string {
       <VisXYContainer
         class="md:hidden"
         :data="points"
-        :height="180"
-        :margin="{ top: 2, right: 2, bottom: 16, left: 32 }"
+        :height="160"
+        :margin="{ top: 8, right: 12, bottom: 20, left: 40 }"
         :y-domain="yDomain"
       >
         <VisArea
@@ -208,26 +208,16 @@ function tooltipTemplate(d: Point): string {
           :y="(d: Point) => d.total"
           color="var(--color-accent)"
         />
-        <VisAxis
-          type="x"
-          :tick-format="formatXTick"
-          :num-ticks="3"
-          :tick-padding="2"
-        />
-        <VisAxis
-          type="y"
-          :tick-format="formatYTick"
-          :num-ticks="3"
-          :tick-padding="2"
-        />
+        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="3" />
+        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="3" />
         <VisCrosshair :template="tooltipTemplate" />
         <VisTooltip />
       </VisXYContainer>
       <VisXYContainer
         class="hidden md:block"
         :data="points"
-        :height="220"
-        :margin="{ top: 4, right: 4, bottom: 18, left: 40 }"
+        :height="200"
+        :margin="{ top: 12, right: 16, bottom: 24, left: 56 }"
         :y-domain="yDomain"
       >
         <VisArea
@@ -242,18 +232,8 @@ function tooltipTemplate(d: Point): string {
           :y="(d: Point) => d.total"
           color="var(--color-accent)"
         />
-        <VisAxis
-          type="x"
-          :tick-format="formatXTick"
-          :num-ticks="5"
-          :tick-padding="2"
-        />
-        <VisAxis
-          type="y"
-          :tick-format="formatYTick"
-          :num-ticks="4"
-          :tick-padding="2"
-        />
+        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="5" />
+        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="4" />
         <VisCrosshair :template="tooltipTemplate" />
         <VisTooltip />
       </VisXYContainer>
