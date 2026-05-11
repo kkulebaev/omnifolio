@@ -166,12 +166,12 @@ const yTicks = computed<number[]>(() => {
 
 const xTicks = computed<number[]>(() => {
   const pts = points.value;
-  if (pts.length === 0) return [];
-  const first = pts[0].ts;
-  const last = pts[pts.length - 1].ts;
-  if (pts.length === 1 || first === last) return [first];
-  if (pts.length === 2) return [first, last];
-  return [first, (first + last) / 2, last];
+  const head = pts[0];
+  const tail = pts[pts.length - 1];
+  if (!head || !tail) return [];
+  if (pts.length === 1 || head.ts === tail.ts) return [head.ts];
+  if (pts.length === 2) return [head.ts, tail.ts];
+  return [head.ts, (head.ts + tail.ts) / 2, tail.ts];
 });
 
 function yPct(v: number): number {
@@ -182,11 +182,10 @@ function yPct(v: number): number {
 
 function xPct(ts: number): number {
   const pts = points.value;
-  if (pts.length === 0) return 0;
-  const first = pts[0].ts;
-  const last = pts[pts.length - 1].ts;
-  if (first === last) return 50;
-  return ((ts - first) / (last - first)) * 100;
+  const head = pts[0];
+  const tail = pts[pts.length - 1];
+  if (!head || !tail || head.ts === tail.ts) return 50;
+  return ((ts - head.ts) / (tail.ts - head.ts)) * 100;
 }
 
 function yLabelStyle(i: number, n: number, t: number): Record<string, string> {
