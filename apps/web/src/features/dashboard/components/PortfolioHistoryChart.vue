@@ -193,7 +193,7 @@ function tooltipTemplate(d: Point): string {
         class="md:hidden"
         :data="points"
         :height="180"
-        :margin="{ top: 6, right: 8, bottom: 20, left: 36 }"
+        :margin="{ top: 2, right: 2, bottom: 16, left: 32 }"
         :y-domain="yDomain"
       >
         <VisArea
@@ -208,8 +208,18 @@ function tooltipTemplate(d: Point): string {
           :y="(d: Point) => d.total"
           color="var(--color-accent)"
         />
-        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="3" />
-        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="3" />
+        <VisAxis
+          type="x"
+          :tick-format="formatXTick"
+          :num-ticks="3"
+          :tick-padding="2"
+        />
+        <VisAxis
+          type="y"
+          :tick-format="formatYTick"
+          :num-ticks="3"
+          :tick-padding="2"
+        />
         <VisCrosshair :template="tooltipTemplate" />
         <VisTooltip />
       </VisXYContainer>
@@ -217,7 +227,7 @@ function tooltipTemplate(d: Point): string {
         class="hidden md:block"
         :data="points"
         :height="220"
-        :margin="{ top: 10, right: 12, bottom: 22, left: 48 }"
+        :margin="{ top: 4, right: 4, bottom: 18, left: 40 }"
         :y-domain="yDomain"
       >
         <VisArea
@@ -232,8 +242,18 @@ function tooltipTemplate(d: Point): string {
           :y="(d: Point) => d.total"
           color="var(--color-accent)"
         />
-        <VisAxis type="x" :tick-format="formatXTick" :num-ticks="5" />
-        <VisAxis type="y" :tick-format="formatYTick" :num-ticks="4" />
+        <VisAxis
+          type="x"
+          :tick-format="formatXTick"
+          :num-ticks="5"
+          :tick-padding="2"
+        />
+        <VisAxis
+          type="y"
+          :tick-format="formatYTick"
+          :num-ticks="4"
+          :tick-padding="2"
+        />
         <VisCrosshair :template="tooltipTemplate" />
         <VisTooltip />
       </VisXYContainer>
