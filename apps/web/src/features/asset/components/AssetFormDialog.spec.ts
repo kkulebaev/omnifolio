@@ -98,9 +98,9 @@ describe("AssetFormDialog — validation", () => {
     const inputs = wrapper.findAll("input");
 
     // Provide a valid name so only the ticker path is exercised
-    await inputs[0].setValue("My Apartment");
+    await inputs[0]!.setValue("My Apartment");
     // Ticker with a space is invalid per /^[A-Za-z0-9_-]{1,32}$/
-    await inputs[1].setValue("AB CD");
+    await inputs[1]!.setValue("AB CD");
 
     await wrapper.find("form").trigger("submit");
     await flushPromises();
@@ -114,9 +114,9 @@ describe("AssetFormDialog — validation", () => {
 
     // inputs[0] = name, inputs[1] = ticker, inputs[2] = currency, inputs[3] = price
     // currency (inputs[2]) is pre-filled with "RUB" from the ui store default
-    await inputs[0].setValue("My Apartment");
-    await inputs[1].setValue("MYAPT123");
-    await inputs[3].setValue("5000000");
+    await inputs[0]!.setValue("My Apartment");
+    await inputs[1]!.setValue("MYAPT123");
+    await inputs[3]!.setValue("5000000");
 
     mockCreate.mockRejectedValueOnce(
       new HttpError(409, { title: "Conflict", status: 409 }),
