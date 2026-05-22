@@ -31,11 +31,15 @@ type adminInstrumentsResponse struct {
 	Items []adminInstrument `json:"items"`
 }
 
-// listInstruments returns every instrument in a single page so the cron service
-// can decide which prices it can refresh. No pagination — the canonical catalog
-// is small (≪10k rows expected).
+// listInstruments returns every GLOBAL instrument in a single page so the cron
+// service can decide which prices it can refresh. Personal instruments are
+// excluded — cron must not touch user-maintained price rows. No pagination —
+// the canonical catalog is small (≪10k rows expected).
 func (a *adminHandlers) listInstruments(w http.ResponseWriter, r *http.Request) {
-	res, err := a.deps.Instrument.List(r.Context(), instrument.ListInput{Limit: 10000})
+	res, err := a.deps.Instrument.List(r.Context(), uuid.Nil, instrument.ListInput{
+		Scope: instrument.ScopeGlobal,
+		Limit: 10000,
+	})
 	if err != nil {
 		a.deps.Logger.Error("admin: list instruments", "err", err)
 		writeAdminError(w, http.StatusInternalServerError, "list failed")
@@ -142,12 +146,18 @@ func (a *adminHandlers) upsertPrices(w http.ResponseWriter, r *http.Request) {
 			resp.Errors = append(resp.Errors, fmt.Sprintf("%s: invalid price %q", item.InstrumentID, item.Price))
 			continue
 		}
-		if err := a.deps.Queries.UpsertPrice(ctx, storage.UpsertPriceParams{
-			InstrumentID: item.InstrumentID,
-			Price:        price,
-		}); err != nil {
+		rows, err := a.deps.Queries.UpsertGlobalPrice(ctx, storage.UpsertGlobalPriceParams{
+			ID:    item.InstrumentID,
+			Price: price,
+		})
+		if err != nil {
 			resp.Failed++
 			resp.Errors = append(resp.Errors, fmt.Sprintf("%s: %v", item.InstrumentID, err))
+			continue
+		}
+		if rows == 0 {
+			resp.Failed++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("%s: instrument not found or personal", item.InstrumentID))
 			continue
 		}
 		resp.Updated++

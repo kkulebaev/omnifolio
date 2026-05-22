@@ -74,31 +74,79 @@ func (e AccountType) Valid() bool {
 
 // Defines values for AssetClass.
 const (
-	Cash    AssetClass = "cash"
-	Crypto  AssetClass = "crypto"
-	RuBond  AssetClass = "ru_bond"
-	RuEtf   AssetClass = "ru_etf"
-	RuStock AssetClass = "ru_stock"
-	UsEtf   AssetClass = "us_etf"
-	UsStock AssetClass = "us_stock"
+	AssetClassCash       AssetClass = "cash"
+	AssetClassCrypto     AssetClass = "crypto"
+	AssetClassOtherAsset AssetClass = "other_asset"
+	AssetClassRealEstate AssetClass = "real_estate"
+	AssetClassRuBond     AssetClass = "ru_bond"
+	AssetClassRuEtf      AssetClass = "ru_etf"
+	AssetClassRuStock    AssetClass = "ru_stock"
+	AssetClassUsEtf      AssetClass = "us_etf"
+	AssetClassUsStock    AssetClass = "us_stock"
+	AssetClassVehicle    AssetClass = "vehicle"
 )
 
 // Valid indicates whether the value is a known member of the AssetClass enum.
 func (e AssetClass) Valid() bool {
 	switch e {
-	case Cash:
+	case AssetClassCash:
 		return true
-	case Crypto:
+	case AssetClassCrypto:
 		return true
-	case RuBond:
+	case AssetClassOtherAsset:
 		return true
-	case RuEtf:
+	case AssetClassRealEstate:
 		return true
-	case RuStock:
+	case AssetClassRuBond:
 		return true
-	case UsEtf:
+	case AssetClassRuEtf:
 		return true
-	case UsStock:
+	case AssetClassRuStock:
+		return true
+	case AssetClassUsEtf:
+		return true
+	case AssetClassUsStock:
+		return true
+	case AssetClassVehicle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreatePersonalInstrumentRequestAssetClass.
+const (
+	CreatePersonalInstrumentRequestAssetClassOtherAsset CreatePersonalInstrumentRequestAssetClass = "other_asset"
+	CreatePersonalInstrumentRequestAssetClassRealEstate CreatePersonalInstrumentRequestAssetClass = "real_estate"
+	CreatePersonalInstrumentRequestAssetClassVehicle    CreatePersonalInstrumentRequestAssetClass = "vehicle"
+)
+
+// Valid indicates whether the value is a known member of the CreatePersonalInstrumentRequestAssetClass enum.
+func (e CreatePersonalInstrumentRequestAssetClass) Valid() bool {
+	switch e {
+	case CreatePersonalInstrumentRequestAssetClassOtherAsset:
+		return true
+	case CreatePersonalInstrumentRequestAssetClassRealEstate:
+		return true
+	case CreatePersonalInstrumentRequestAssetClassVehicle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstrumentScope.
+const (
+	InstrumentScopeGlobal   InstrumentScope = "global"
+	InstrumentScopePersonal InstrumentScope = "personal"
+)
+
+// Valid indicates whether the value is a known member of the InstrumentScope enum.
+func (e InstrumentScope) Valid() bool {
+	switch e {
+	case InstrumentScopeGlobal:
+		return true
+	case InstrumentScopePersonal:
 		return true
 	default:
 		return false
@@ -120,6 +168,24 @@ func (e TInvestSubAccountType) Valid() bool {
 	case IIS:
 		return true
 	case PREMIUM:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListInstrumentsParamsScope.
+const (
+	ListInstrumentsParamsScopeGlobal ListInstrumentsParamsScope = "global"
+	ListInstrumentsParamsScopeMine   ListInstrumentsParamsScope = "mine"
+)
+
+// Valid indicates whether the value is a known member of the ListInstrumentsParamsScope enum.
+func (e ListInstrumentsParamsScope) Valid() bool {
+	switch e {
+	case ListInstrumentsParamsScopeGlobal:
+		return true
+	case ListInstrumentsParamsScopeMine:
 		return true
 	default:
 		return false
@@ -193,6 +259,23 @@ type CreateDepositRequest struct {
 	Month openapi_types.Date `json:"month"`
 }
 
+// CreatePersonalInstrumentRequest defines model for CreatePersonalInstrumentRequest.
+type CreatePersonalInstrumentRequest struct {
+	// AssetClass Personal-only asset classes. Exchange/cash classes are rejected.
+	AssetClass CreatePersonalInstrumentRequestAssetClass `json:"assetClass"`
+	Currency   string                                    `json:"currency"`
+
+	// InitialPrice Positive decimal as string, e.g. "12000000".
+	InitialPrice string `json:"initialPrice"`
+	Name         string `json:"name"`
+
+	// Ticker Short label / identifier (user-visible).
+	Ticker string `json:"ticker"`
+}
+
+// CreatePersonalInstrumentRequestAssetClass Personal-only asset classes. Exchange/cash classes are rejected.
+type CreatePersonalInstrumentRequestAssetClass string
+
 // CreatePositionRequest defines model for CreatePositionRequest.
 type CreatePositionRequest struct {
 	InstrumentId openapi_types.UUID `json:"instrumentId"`
@@ -235,8 +318,15 @@ type Instrument struct {
 
 	// PriceUpdatedAt When currentPrice was last fetched. Omitted if no price recorded yet.
 	PriceUpdatedAt *time.Time `json:"priceUpdatedAt,omitempty"`
-	Ticker         string     `json:"ticker"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
+
+	// Scope `global` — canonical catalog row maintained by cron (exchange-traded / cash classes).
+	// `personal` — row owned by the calling user (manual asset classes: real_estate, vehicle, other_asset).
+	Scope     InstrumentScope `json:"scope"`
+	Ticker    string          `json:"ticker"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+
+	// UserId Owner user id. Null for global rows, set for personal rows.
+	UserId *openapi_types.UUID `json:"userId,omitempty"`
 }
 
 // InstrumentList defines model for InstrumentList.
@@ -246,6 +336,10 @@ type InstrumentList struct {
 	// Total Total instruments matching the filter (for pagination).
 	Total int `json:"total"`
 }
+
+// InstrumentScope `global` — canonical catalog row maintained by cron (exchange-traded / cash classes).
+// `personal` — row owned by the calling user (manual asset classes: real_estate, vehicle, other_asset).
+type InstrumentScope string
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -333,6 +427,12 @@ type Problem struct {
 	Type     *string            `json:"type,omitempty"`
 }
 
+// SetInstrumentPriceRequest defines model for SetInstrumentPriceRequest.
+type SetInstrumentPriceRequest struct {
+	// Price Positive decimal as string.
+	Price string `json:"price"`
+}
+
 // TInvestPreviewRequest defines model for TInvestPreviewRequest.
 type TInvestPreviewRequest struct {
 	Token string `json:"token"`
@@ -356,6 +456,13 @@ type TInvestSubAccountType string
 // UpdateAccountRequest defines model for UpdateAccountRequest.
 type UpdateAccountRequest struct {
 	Name string `json:"name"`
+}
+
+// UpdateInstrumentRequest Edit a personal instrument. `currency` and `assetClass` are intentionally
+// not editable here — change those by deleting and re-creating.
+type UpdateInstrumentRequest struct {
+	Name   *string `json:"name,omitempty"`
+	Ticker *string `json:"ticker,omitempty"`
 }
 
 // UpdatePositionRequest defines model for UpdatePositionRequest.
@@ -401,9 +508,18 @@ type ListInstrumentsParams struct {
 	// Q Filter by ticker or name (case-insensitive substring).
 	Q          *string     `form:"q,omitempty" json:"q,omitempty"`
 	AssetClass *AssetClass `form:"assetClass,omitempty" json:"assetClass,omitempty"`
-	Limit      *int        `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset     *int        `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Scope Restrict results to a scope.
+	// `mine` — caller's personal instruments only.
+	// `global` — canonical catalog only.
+	// Omitted — union of both (caller's personal + global).
+	Scope  *ListInstrumentsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+	Limit  *int                        `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                        `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// ListInstrumentsParamsScope defines parameters for ListInstruments.
+type ListInstrumentsParamsScope string
 
 // SearchInstrumentsParams defines parameters for SearchInstruments.
 type SearchInstrumentsParams struct {
@@ -445,6 +561,15 @@ type LoginJSONRequestBody = LoginRequest
 
 // CreateDepositJSONRequestBody defines body for CreateDeposit for application/json ContentType.
 type CreateDepositJSONRequestBody = CreateDepositRequest
+
+// CreateInstrumentJSONRequestBody defines body for CreateInstrument for application/json ContentType.
+type CreateInstrumentJSONRequestBody = CreatePersonalInstrumentRequest
+
+// UpdateInstrumentJSONRequestBody defines body for UpdateInstrument for application/json ContentType.
+type UpdateInstrumentJSONRequestBody = UpdateInstrumentRequest
+
+// SetInstrumentPriceJSONRequestBody defines body for SetInstrumentPrice for application/json ContentType.
+type SetInstrumentPriceJSONRequestBody = SetInstrumentPriceRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -502,9 +627,21 @@ type ServerInterface interface {
 	// List instruments with optional search and pagination
 	// (GET /instruments)
 	ListInstruments(w http.ResponseWriter, r *http.Request, params ListInstrumentsParams)
+	// Create a personal instrument (real estate, vehicle, other property)
+	// (POST /instruments)
+	CreateInstrument(w http.ResponseWriter, r *http.Request)
 	// Search instruments by ticker or name
 	// (GET /instruments/search)
 	SearchInstruments(w http.ResponseWriter, r *http.Request, params SearchInstrumentsParams)
+	// Delete a personal instrument
+	// (DELETE /instruments/{instrumentId})
+	DeleteInstrument(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId)
+	// Update a personal instrument (rename)
+	// (PATCH /instruments/{instrumentId})
+	UpdateInstrument(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId)
+	// Update the current price of a personal instrument
+	// (PUT /instruments/{instrumentId}/price)
+	SetInstrumentPrice(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId)
 	// Aggregated portfolio across all accounts
 	// (GET /portfolio)
 	GetPortfolio(w http.ResponseWriter, r *http.Request, params GetPortfolioParams)
@@ -625,9 +762,33 @@ func (_ Unimplemented) ListInstruments(w http.ResponseWriter, r *http.Request, p
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Create a personal instrument (real estate, vehicle, other property)
+// (POST /instruments)
+func (_ Unimplemented) CreateInstrument(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Search instruments by ticker or name
 // (GET /instruments/search)
 func (_ Unimplemented) SearchInstruments(w http.ResponseWriter, r *http.Request, params SearchInstrumentsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a personal instrument
+// (DELETE /instruments/{instrumentId})
+func (_ Unimplemented) DeleteInstrument(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update a personal instrument (rename)
+// (PATCH /instruments/{instrumentId})
+func (_ Unimplemented) UpdateInstrument(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update the current price of a personal instrument
+// (PUT /instruments/{instrumentId}/price)
+func (_ Unimplemented) SetInstrumentPrice(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1135,6 +1296,19 @@ func (siw *ServerInterfaceWrapper) ListInstruments(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// ------------- Optional query parameter "scope" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scope", r.URL.Query(), &params.Scope, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -1163,6 +1337,26 @@ func (siw *ServerInterfaceWrapper) ListInstruments(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListInstruments(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInstrument operation middleware
+func (siw *ServerInterfaceWrapper) CreateInstrument(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInstrument(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1202,6 +1396,102 @@ func (siw *ServerInterfaceWrapper) SearchInstruments(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SearchInstruments(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInstrument operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInstrument(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "instrumentId" -------------
+	var instrumentId InstrumentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "instrumentId", chi.URLParam(r, "instrumentId"), &instrumentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instrumentId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInstrument(w, r, instrumentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateInstrument operation middleware
+func (siw *ServerInterfaceWrapper) UpdateInstrument(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "instrumentId" -------------
+	var instrumentId InstrumentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "instrumentId", chi.URLParam(r, "instrumentId"), &instrumentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instrumentId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateInstrument(w, r, instrumentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetInstrumentPrice operation middleware
+func (siw *ServerInterfaceWrapper) SetInstrumentPrice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "instrumentId" -------------
+	var instrumentId InstrumentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "instrumentId", chi.URLParam(r, "instrumentId"), &instrumentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instrumentId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetInstrumentPrice(w, r, instrumentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1470,7 +1760,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/instruments", wrapper.ListInstruments)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/instruments", wrapper.CreateInstrument)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/instruments/search", wrapper.SearchInstruments)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/instruments/{instrumentId}", wrapper.DeleteInstrument)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/instruments/{instrumentId}", wrapper.UpdateInstrument)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/instruments/{instrumentId}/price", wrapper.SetInstrumentPrice)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/portfolio", wrapper.GetPortfolio)
@@ -2400,6 +2702,76 @@ func (response ListInstruments401ApplicationProblemPlusJSONResponse) VisitListIn
 	return err
 }
 
+type CreateInstrumentRequestObject struct {
+	Body *CreateInstrumentJSONRequestBody
+}
+
+type CreateInstrumentResponseObject interface {
+	VisitCreateInstrumentResponse(w http.ResponseWriter) error
+}
+
+type CreateInstrument201JSONResponse Instrument
+
+func (response CreateInstrument201JSONResponse) VisitCreateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInstrument401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateInstrument401ApplicationProblemPlusJSONResponse) VisitCreateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInstrument409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateInstrument409ApplicationProblemPlusJSONResponse) VisitCreateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInstrument422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response CreateInstrument422ApplicationProblemPlusJSONResponse) VisitCreateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchInstrumentsRequestObject struct {
 	Params SearchInstrumentsParams
 }
@@ -2434,6 +2806,222 @@ func (response SearchInstruments401ApplicationProblemPlusJSONResponse) VisitSear
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstrumentRequestObject struct {
+	InstrumentId InstrumentId `json:"instrumentId"`
+}
+
+type DeleteInstrumentResponseObject interface {
+	VisitDeleteInstrumentResponse(w http.ResponseWriter) error
+}
+
+type DeleteInstrument204Response struct {
+}
+
+func (response DeleteInstrument204Response) VisitDeleteInstrumentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInstrument401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteInstrument401ApplicationProblemPlusJSONResponse) VisitDeleteInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstrument404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteInstrument404ApplicationProblemPlusJSONResponse) VisitDeleteInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstrument409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteInstrument409ApplicationProblemPlusJSONResponse) VisitDeleteInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstrumentRequestObject struct {
+	InstrumentId InstrumentId `json:"instrumentId"`
+	Body         *UpdateInstrumentJSONRequestBody
+}
+
+type UpdateInstrumentResponseObject interface {
+	VisitUpdateInstrumentResponse(w http.ResponseWriter) error
+}
+
+type UpdateInstrument200JSONResponse Instrument
+
+func (response UpdateInstrument200JSONResponse) VisitUpdateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstrument401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateInstrument401ApplicationProblemPlusJSONResponse) VisitUpdateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstrument404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateInstrument404ApplicationProblemPlusJSONResponse) VisitUpdateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstrument409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateInstrument409ApplicationProblemPlusJSONResponse) VisitUpdateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstrument422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateInstrument422ApplicationProblemPlusJSONResponse) VisitUpdateInstrumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetInstrumentPriceRequestObject struct {
+	InstrumentId InstrumentId `json:"instrumentId"`
+	Body         *SetInstrumentPriceJSONRequestBody
+}
+
+type SetInstrumentPriceResponseObject interface {
+	VisitSetInstrumentPriceResponse(w http.ResponseWriter) error
+}
+
+type SetInstrumentPrice204Response struct {
+}
+
+func (response SetInstrumentPrice204Response) VisitSetInstrumentPriceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetInstrumentPrice401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response SetInstrumentPrice401ApplicationProblemPlusJSONResponse) VisitSetInstrumentPriceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetInstrumentPrice404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response SetInstrumentPrice404ApplicationProblemPlusJSONResponse) VisitSetInstrumentPriceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetInstrumentPrice422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response SetInstrumentPrice422ApplicationProblemPlusJSONResponse) VisitSetInstrumentPriceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2586,9 +3174,21 @@ type StrictServerInterface interface {
 	// List instruments with optional search and pagination
 	// (GET /instruments)
 	ListInstruments(ctx context.Context, request ListInstrumentsRequestObject) (ListInstrumentsResponseObject, error)
+	// Create a personal instrument (real estate, vehicle, other property)
+	// (POST /instruments)
+	CreateInstrument(ctx context.Context, request CreateInstrumentRequestObject) (CreateInstrumentResponseObject, error)
 	// Search instruments by ticker or name
 	// (GET /instruments/search)
 	SearchInstruments(ctx context.Context, request SearchInstrumentsRequestObject) (SearchInstrumentsResponseObject, error)
+	// Delete a personal instrument
+	// (DELETE /instruments/{instrumentId})
+	DeleteInstrument(ctx context.Context, request DeleteInstrumentRequestObject) (DeleteInstrumentResponseObject, error)
+	// Update a personal instrument (rename)
+	// (PATCH /instruments/{instrumentId})
+	UpdateInstrument(ctx context.Context, request UpdateInstrumentRequestObject) (UpdateInstrumentResponseObject, error)
+	// Update the current price of a personal instrument
+	// (PUT /instruments/{instrumentId}/price)
+	SetInstrumentPrice(ctx context.Context, request SetInstrumentPriceRequestObject) (SetInstrumentPriceResponseObject, error)
 	// Aggregated portfolio across all accounts
 	// (GET /portfolio)
 	GetPortfolio(ctx context.Context, request GetPortfolioRequestObject) (GetPortfolioResponseObject, error)
@@ -3127,6 +3727,37 @@ func (sh *strictHandler) ListInstruments(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// CreateInstrument operation middleware
+func (sh *strictHandler) CreateInstrument(w http.ResponseWriter, r *http.Request) {
+	var request CreateInstrumentRequestObject
+
+	var body CreateInstrumentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInstrument(ctx, request.(CreateInstrumentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInstrument")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInstrumentResponseObject); ok {
+		if err := validResponse.VisitCreateInstrumentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SearchInstruments operation middleware
 func (sh *strictHandler) SearchInstruments(w http.ResponseWriter, r *http.Request, params SearchInstrumentsParams) {
 	var request SearchInstrumentsRequestObject
@@ -3146,6 +3777,98 @@ func (sh *strictHandler) SearchInstruments(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SearchInstrumentsResponseObject); ok {
 		if err := validResponse.VisitSearchInstrumentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInstrument operation middleware
+func (sh *strictHandler) DeleteInstrument(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId) {
+	var request DeleteInstrumentRequestObject
+
+	request.InstrumentId = instrumentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInstrument(ctx, request.(DeleteInstrumentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInstrument")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInstrumentResponseObject); ok {
+		if err := validResponse.VisitDeleteInstrumentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateInstrument operation middleware
+func (sh *strictHandler) UpdateInstrument(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId) {
+	var request UpdateInstrumentRequestObject
+
+	request.InstrumentId = instrumentId
+
+	var body UpdateInstrumentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateInstrument(ctx, request.(UpdateInstrumentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateInstrument")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateInstrumentResponseObject); ok {
+		if err := validResponse.VisitUpdateInstrumentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetInstrumentPrice operation middleware
+func (sh *strictHandler) SetInstrumentPrice(w http.ResponseWriter, r *http.Request, instrumentId InstrumentId) {
+	var request SetInstrumentPriceRequestObject
+
+	request.InstrumentId = instrumentId
+
+	var body SetInstrumentPriceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetInstrumentPrice(ctx, request.(SetInstrumentPriceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetInstrumentPrice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetInstrumentPriceResponseObject); ok {
+		if err := validResponse.VisitSetInstrumentPriceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3210,68 +3933,83 @@ func (sh *strictHandler) GetPortfolioHistory(w http.ResponseWriter, r *http.Requ
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AP//",
+	"1DzbbhzJdb9y0DEQMu65kNLaKwr7IFNaL2FdGI3kABYZsab7zEyZ3VW9VdWkZgUCG+QX8uDXfEIeDDiG",
+	"kfwC9xfyJUFd+jrVPTO8yasXcbqrq06dc+rcT30OIp5mnCFTMjj4HGREkBQVCvPrWRTxnKmjWP+gLDgI",
+	"MqIWQRgwkmJwEJDyfRgI/D6nAuPgQIkcw0BGC0yJ/nDGRUpUcBDkOdUj1TLTH0slKJsHV1dh8BwzLmn3",
+	"OnH5/nbrHDGpRJ5iz5ZofchtVrvSH8uMM4kGl4eczRIaKf13xJlCZv4kWZbQiCjK2SgTfJpg+ss/Ss70",
+	"u2qxXwicBQfBP4wqao3sWzk6tl/ZJWOUkaCZni44CN6i5LmIECK3OOzgcD4MIc7tqrgbXIXBa66+5TmL",
+	"vwhojCuYmdWvwuA9I7lacEF/wAeF5jVXoFdGpgxaDDC/JwmNzYIvhODiIeGploYZoYmG56pgvvrJNEdW",
+	"8AyFopbNIoEa/meqwaMxUThQNMVVRg0DGm/Az2GQEKkmSxaVyGB5kpBpgsXZ6PxioojKDXQkSd7MgoMP",
+	"/Yhxm6t9enUatparTd+727VA2nP/efWFfbARpO/00KswyLN4O+Rf1SXMh8Ag3gDkRoY1etanPy1n4tM/",
+	"YqT04g6W56gITbZGdnAVtlnJyFzKmflBFaZyLUe7Lyr0BUQIslzZaDX16k5Oq728pNLD4iUoG8FU7a8f",
+	"JDtZD2KbnIwsT/VnMo8ilDIIA3dQwyBDFmvqnnq4rc4wtVlSwnKSaKpTdoFSE3u6nFLzP2WEReifTUpU",
+	"hwmRDZBE/lEqHp1r9ZV/nHIW279QzTQTyfJtLt2zSCwzxfUfRC6M1iPJR5SKKM2CF7igUaL/4mqB4iPR",
+	"q3rhOTTM6vb4Fr/P0dKvKdy+5QL0p9/YXQNnyRLONNufAWExnOmXZ0AEQkGg4Qkrv3IoApJIDmeKnyMr",
+	"vrNvSqvlDNJcKpgiZIJf0Lg5j0EwlL8smt2sJKO/w6WblmR0gpFA5Z1PE7zBnvbb1W2/RRIPzF6fHR/B",
+	"OS5hp9geXC6Q9UC1G4RBSj69RDZXi+Bgb//rMEgpK35/7SFFCfQ6QKQZda+wFCK2/tl43Phsz/NZm5yr",
+	"O3k3OLK8IPPpwBmjQGPvZtxsLfB/9Xg9GJrDetYWDXSa0VsAsN9GxDi8A1XUkm11leKTcPbcOiu8dm5b",
+	"jJ0WJkcTE/+y4AmCFekXCCKfJqgFYkaUQqFH/OuHvcGT0w/jwZPTf/qFz7ZIOdObb8/8jC1Bq7ynoBYI",
+	"MVkClcC0Xk20hQiKmxczKqQCPjM/zFQgUVygGEga6403VPFaLWyBCYv9diPsGIXkjCSVW9GNu4akbu6y",
+	"mMYykRkJkR6KcggvPkULwuY40qK5eOxko4YG42EQVqL/hoI7yoVAFi2tC1iR7dngD6efH4VfXXmpRhlV",
+	"lCTHgkbo2VbBEDFGNCUJEAn22xC0FwInwd7+2Pw7CcwmPpE005Za+Ty4S2ESnaNYhXKy4EJBQqaYwAho",
+	"rD2AGUUBO7lEMbigkk4T3B22+PnZ4A9k8MN48OTj4PTzXvho34ehFl85EEoLr8YTNQq00NrDfc6G6uQ5",
+	"2vJ211r43+eEKao8uuu5I+FJPh4/QhhXtGzSbbzexG361+WSvn06gbStJLICKATGC9aTvt3en6fUJc2S",
+	"S7KUNYmlBVpdarlzsT/e/9Vg/NVgvLe16DLwtORXfac9WL4LW7sg2M1t7e+QJBZ3TThkZXiX3MbP1+LD",
+	"feZbqRLa66R1r9atRt6MpW4mee1XqkPyviRSwTnjlwwyPUKf1kII2zmG8CalSmEMdKbPiR0mMOIixhiW",
+	"qNoC+dHw8Ve3OBKdXrZZ+X3db24faWRQ3y5cEgna9YcZqmiB8WZ72YwaMuLrLa2KcyZmeEO7rEy5dUxA",
+	"+2UofObum0uGAvRboPEQXudJAjMuYJ7wKUlA8EsZgrYe9MPMWRXmcQMDjkZrIiM+yVJqsC7V5TSbReM2",
+	"wYsKp3chh2pne0UUaYNekcRj0OvHUOknCSlR0YKyuRPZidJmgcEtmVNmwnPGMEgpo6k2wCrbnTKFcxQd",
+	"kq+AoR8Tk4IZm3CeWXKfwf/9+B8QEcYZjUgCEVEk4XNNbkgJZYpQhjFMlxAJzmAHnSE5UILoczGCukW5",
+	"OzxhZwXL2Kn1RPzSzaExEJEk0dgwDLjjnPeGuXoANQM0BGd/hlAzP3ety1wYrHYvJmhi1/aapy/5nHbb",
+	"OZi6gFfJ4fZJ08/66rFn4oxIeclF3DYoW07t3r7nW4EpplMUrxyNZiRPVHAwI4msTtOU8wQJW+GDAsIS",
+	"AB8rHHOhZjyhfHXPN4nNucm6g3RhIPM0JWK58VwTN35F77rnYW+kr7bD76hU3C7cimdb0f+cyiwhy8Oa",
+	"tmyeivcSxT9KOIvtwI+FUDoDQecLBYxfap5dQkxnMxQwEzzVMnIgGcnkgiu4IEluohurXMKpS49th+mJ",
+	"m3qtPdSxyXLlXtSV9Fw1Y+qRk7Uq2o1+3aWpb2wU1WjmcSG39FGywuRZG9g3I7+1NsJtEgRmnokiSR0t",
+	"5bluek09bufKK8NvjuQbbch88Jpon3qD8S0Wq6dq65QO2x7ZWh1f7re1hQamejm2PBcrHDtd1hJbJI4N",
+	"Y2tXuD5oBTEtjz5PJVBWioLDUhIYX4tKKI58COe4tPqtCh4GHsiny2ak/d4h8wNRl343BMGyD0gNSYYC",
+	"CrrCDuMKIs4uUCiMd30AGA+0fYx8ZzReJ6wdy1SrE+W8YM2GhU+8ioxqibkgLH7Xb8htheeOY+O2GK9I",
+	"5hoALf5oUCqssXT/mag0710cibtj4bviw1V2WuWSm5E5bnHTeqLeHzXvRhXTRmxic09nfQCvjNvBzuv3",
+	"r168PTqER1+He1/vtuJ4Q6+zf9v8dl0J1fbY0Cn9fmJRM7Ga1Pr2EH799fjX4EaAzYPLlfRcXObHV7Y3",
+	"o5jEtzwdelsmX+sb7YliPd7fX3UatRZW1t6oiLJaE9KTKao+G6EQXMjRRfn5BoFqZbIGPdGzCaqK9Uxc",
+	"ptM9y7ZND7RCT4++6sgFtGsKOuPl72ym7ljgBcXLTkDLRN926bk28swsm4Bhi8M8sc586oTM5j6Hm3tS",
+	"frrW56iv0gNtbcbVoEzs5fK1FTWF8/+bt29+9+JtEAZHR5MgDI7fvnh19P6VJwKwrkzGB7+NKa7WIjS3",
+	"cKNski+72g2CNzvYPAsvYqqAVCG7SjYO4azyZG01QqmbbIkENRVpRlYlyxOmzTiMqdKeASxQoA0TmdAP",
+	"qAWXqM3dGBNUWgvoKQUOTKBOHz1PPcOtE243yZt14HJtzuuGKax+Avcmqd5Lt8vbluF57KHNEwLdMbCb",
+	"Rex9J66YcdV86kswabWHUS6oWk60sHIyDqWknB1yfk6xLMWN7M+yGFfWQXN1NaZakrIZ706kg620sEFc",
+	"JYhmxGFQKtXgTcqoMbrh2fGRyZMLaWfYG46HY40kniEjGQ0OgkfD8fCRzf4uDOgjUhPOc1tgo0lvdKs2",
+	"8IKXtKxakUGrDHh/PO4pJN2ugLReJecpItXPtcdTwnsVBo/He12zlmCOGlW4V/WwoJ3TBIBJtUFF5rJm",
+	"3sng1ATNpAc1jQoxV1+NUv2Gx8s7Q4u3Cu2qydKuhLRFmr27Jo2PLBa8+IbUCIPH+/vrP2rXLjepaEEo",
+	"SOin4FVYcfrI1S6NMmu7uAi0R5O5dVECgbJCytZEWVWjcsFsDjwp2POCUBPIqldxyRO2c/1fP/14/T/X",
+	"f73+808//vRv13+9/sv1f8MIrv90/afr/9R//O9PP17/+fpv13/56d+v/7Y7hPeySla8P4IpzrgodwlW",
+	"x3EGkp8wPcSwcUQYZDQ6h8sFjRaNQjLFIaUae1YrNhnZWXHOSmqc9rvnaL8BuxFLj+8NCGe+ejh8UqOj",
+	"IfOX5HUHL/hqBaXJlBLLoBscg8+lA3tlWT9BGxJr8sZz87wu5BokeewzTvQXt5AJdtL+j8o2jyaC7Nr9",
+	"wiD0K7rfourc5Z2rOVfY7uE3NwCca/8lkPhbVKWguaRqAVXeq0s/1jqtOkr0qyGjqgj26tTYItFilRwN",
+	"l+eeRJHXrXpgSdSjXF0lyUPxwJ1IKAtzyT47ArX5u7udPBo1MsK3Yq4ew60McN6n5dZ28h7YdKvy4/dg",
+	"u23NXuMn6z8oWwvvhh+fxXEpvrQRtKoZakn9DRhy9LmeYtxAcza47GegOrMKXh+GbiHrw7WDGy2t5vjm",
+	"qksz3PPp9YdoHlg39J3en7FyKM9jLVOy1WmUSxbdlWZoWftLFi0EZzyXydIVZcrK/jF+n4nNl9a2cyZt",
+	"e5GDcXjCXrmKssI2t84iPN7f9zlgetmHMz69bo7pPf1ZcdM7QedzFEAY0DTFmGre0qzhSDMV/BwFmW8S",
+	"G8jVYpTwOWX1aEArEGZe34+0adQEPrCQMTFfX8SNz+cYA2VPQaKS4KKcUMY1F0hid7fCBNWgCn9W61aZ",
+	"L0njb4bD4VP4TqnsDUuWT2FCUpxQhd+8JJ+ewjFRi29GvrsHHt7fdiHe4ODDaSNeqKlkPSITPrbSoCh6",
+	"rDFXrhYtxuJWkXVyln6/iYHgiKKHt2KZZo6iuLwgVg9QNg/S5Qm/wuALsNyhgz6XNnF82wCvdmSj+pxe",
+	"dLgLOfpD4M+LQfeIlnrzSk8IvIAXuIhR2CihbRR8/mJyGEKZwDC/7zZQHldoKDBZPloXKC8aau7T3Wq1",
+	"fT6wt1W2DP1dB8oLIvppWD8Ro8/lZTUbeDp1+v4cYoT9eNjW0amu/TGXPowWpvnrhz4h+50bco8ixbWg",
+	"eRjyze/6dR29QIZSQib4FGsokkupMHWMUmsw6ZWeR7VxK4htXahgW1OmS7BJd+ACGEkRdiIicUCZROaK",
+	"bWQ+tVaCaVwxSdfvcxTLKuf6fVC/5aiW9P9qfVnEZ++MjULiDa3uWgW5nnbl7iAlaKRAoMwTJU2QAkzT",
+	"0fCEnaWUYdEdkySmLcBTWSHNvRN6fH8/jRtV9JjpQTnTRh2fwZSrhUZye5VfupYs1+ziQ0rRIlUz/Iq7",
+	"QCjTL1xnzOnGaE5oag5mNWPZk2JIRz7ZJqWieMP98rUs+Rfgs5nEjhXGa7qgTu/xwLZ6xzwH99j2a2Fc",
+	"Jh3rp/CutH2dt4zFyzNblwMSiYgWzvYtWsdqAqIOTd0k8OlD6S8UWm3VQjGE4qTYuxLqLVsnrLhLYOes",
+	"1rR1FsKZa9vSf9Yat852n0K7h0xvKCJyUU1GBDred7cZsLjVjWbAE5zBJRfn6M2t2o0e1QtE7zHa3HmJ",
+	"wwNbQvVS3vuIPD98ILm0nnz8uqO5DvytguCKqZa7nYekpUpH9oh1atSJed2rU7uUYfcVgFspxy8rAV8V",
+	"rax3LPgsXhuib8UM2ZiGfXkCny28pSi0pSePx0+AzoCw5Qkro6oCZyiQRSiBKtv9iim/wFoY01zZ4JNW",
+	"FpaWtPo7M+a3Pv9+69+D7D4ttpUzsJrIKJLcbeNP85T25EHgwHLaNoxwwtZW1KZpbutnFYdMoLlLCBam",
+	"Q9WYhvaGAYkpYYpG0scU7dLfe0253FB1jR9IdT182uUL6Loiid+l69op/W0k4ahsobjtkcp9+RtUriBP",
+	"W5fKcTefdRWkm1so5IJmQCUgm3ERaVNQ2aK6yT+/hAQv0HxDY7TFeMeTF2/fgdH1epKnwLgaLHkubHpI",
+	"/zJ3wOrzd8Ioi6lUlM1zKhfmIO4YT6tICI0f73ozQis9Kfd06rqbXzY6dx51YG82yX+++UkjYF3YuJ+B",
+	"es9AVr/xoCsGVF2LsCYu0m4zHcJz66+aiEFubwzISt3fFRGp9RVW/LFpaf692n0VJnxOb/ESyHwucE6K",
+	"Sx9ua/M9c9NhDFm1RiS4lECSxFcZXtG1RefRorr4YS29i0si1pD9iEVJLk20SxGhzA2CsPP+3eFukwGe",
+	"jCEmS1nUCZ8pftbFAjPB08B7+3fXtVzdQCGLO0FSPCbLLiDMDa2bg/AgjFeQpJf/Chp/wUD+c0KTZY1d",
+	"iwZwG6mhDIiliSBsjl2M24z9rjSxfDjVOLc3T/r48iXXxmOMF7CTCf6JYgwXlMDvqUJtzR6SODYOby6S",
+	"4CAYkYwape1A+VxGDm00WbNYEWDN1aLxu2r4KJ9VRSK1h01nsDa2FCvVwzLOf3V69f8BAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

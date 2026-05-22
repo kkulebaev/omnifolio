@@ -10,6 +10,7 @@ import {
   Wallet,
   Banknote,
   CandlestickChart,
+  Building2,
   Settings,
 } from "lucide-vue-next";
 
@@ -22,6 +23,7 @@ const navItems = [
   { id: "acc", label: "Аккаунты", icon: Wallet, to: "/accounts", enabled: true },
   { id: "dep", label: "Пополнения", icon: Banknote, to: "/deposits", enabled: true },
   { id: "ins", label: "Инструменты", icon: CandlestickChart, to: "/instruments", enabled: true },
+  { id: "assets", label: "Имущество", icon: Building2, to: "/assets", enabled: true },
   { id: "set", label: "Настройки", icon: Settings, to: "/settings", enabled: true },
 ];
 

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { AssetClass } from './assetClass';
+import type { InstrumentScope } from './instrumentScope';
 
 export interface Instrument {
   id: string;
@@ -14,6 +15,12 @@ export interface Instrument {
   /** @pattern ^[A-Z]{3,5}$ */
   currency: string;
   name: string;
+  scope: InstrumentScope;
+  /**
+     * Owner user id. Null for global rows, set for personal rows.
+     * @nullable
+     */
+  userId?: string | null;
   createdAt: string;
   updatedAt: string;
   /** Last known price as decimal string. Omitted if no price recorded yet. */

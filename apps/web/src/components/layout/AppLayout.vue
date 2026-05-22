@@ -5,6 +5,7 @@ import Header from "./Header.vue";
 import Sidebar from "./Sidebar.vue";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { useUiStore } from "@/stores/ui";
+import { Toaster } from "vue-sonner";
 
 const ui = useUiStore();
 const route = useRoute();
@@ -27,5 +28,6 @@ watch(() => route.fullPath, () => ui.toggleMobileSidebar(false));
       </div>
     </main>
     <ConfirmDialog />
+    <Toaster position="bottom-right" richColors />
   </div>
 </template>

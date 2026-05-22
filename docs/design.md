@@ -94,6 +94,19 @@ Routing — по `instrument.asset_class`.
 Это критично для корректной агрегации в "всё вместе" и для разделения
 "position source ↔ price provider".
 
+**Personal instruments**. С миграции 0008 у `instruments` есть nullable
+`user_id`. Строки с `user_id IS NULL` — глобальный канонический каталог
+(биржевые инструменты + cash), пишется только cron-ом / admin-эндпоинтами.
+Строки с `user_id IS NOT NULL` — личные активы (квартиры, машины, прочее
+имущество), полные CRUD-права у владельца. Двойственность жёсткая на уровне
+БД: CHECK `instruments_scope_class_check` гарантирует
+`(user_id IS NULL ↔ asset_class ∈ {ru_*, us_*, crypto, cash})` и
+`(user_id IS NOT NULL ↔ asset_class ∈ {real_estate, vehicle, other_asset})`.
+Уникальность тоже партиционирована — две partial unique indexes: для
+глобальных `(LOWER(ticker), asset_class)`, для личных
+`(user_id, LOWER(ticker), asset_class)` — личный «AAPL» у юзера не
+конфликтует с глобальным AAPL.
+
 ### 3.3. Хранение денег
 
 - Postgres: `NUMERIC(38, 18)` для quantity, `NUMERIC(20, 8)` для price,
@@ -122,11 +135,15 @@ accounts            (id, user_id, source_type, name,
 account_credentials (account_id PK, ciphertext BYTEA, nonce BYTEA, key_version,
                      created_at, updated_at)
 
-instruments              (id, ticker, asset_class, currency, name,
+instruments              (id, user_id NULL, ticker, asset_class, currency, name,
                           created_at, updated_at)
                          -- asset_class IN ('ru_stock','ru_bond','ru_etf',
-                         --                 'us_stock','us_etf','crypto','cash')
-                         -- UNIQUE (LOWER(ticker), asset_class)
+                         --                 'us_stock','us_etf','crypto','cash',
+                         --                 'real_estate','vehicle','other_asset')
+                         -- CHECK (user_id IS NULL  ↔ asset_class биржевые/cash)
+                         -- CHECK (user_id NOT NULL ↔ asset_class manual)
+                         -- UNIQUE (LOWER(ticker), asset_class)        WHERE user_id IS NULL
+                         -- UNIQUE (user_id, LOWER(ticker), asset_class) WHERE user_id IS NOT NULL
 instrument_external_ids  (source, native_id, instrument_id,
                           PRIMARY KEY(source, native_id))
 
@@ -161,7 +178,11 @@ portfolio_snapshots (user_id, snapshot_date DATE, display_currency,
   отложены до явной потребности.
 - Уникальность инструмента — `UNIQUE(LOWER(ticker), asset_class)`
   (миграция 0002), что разводит `MMM/us_stock` и `MMM/ru_stock`, но
-  делает `POST /instruments` идемпотентным.
+  делает идемпотентным admin-seed (cron-flow). С миграции 0008 этот
+  индекс заменён на два partial: глобальный и per-user (см. §3.2).
+- `cash` как asset_class добавлен миграцией 0003. Личные активы
+  (`real_estate`, `vehicle`, `other_asset`) добавлены миграцией 0008
+  (вместе с `user_id` и двумя CHECK).
 
 ### 3.6. Deposits (журнал пополнений)
 
@@ -229,10 +250,16 @@ portfolio_snapshots (user_id, snapshot_date DATE, display_currency,
   `quantity=0`. Шорты (negative) — out of scope.
 - **POST positions** в существующий `(account_id, instrumentId)` → 409
   (use PUT). Без accumulate / overwrite.
-- **Instruments** — глобальный канонический справочник без `user_id`.
-  Любой залогиненный юзер создаёт. POST идемпотентен через
-  `UNIQUE(LOWER(ticker), asset_class)`. DELETE через API нет —
-  каталог append-only.
+- **Instruments — глобальные** (`user_id IS NULL`): канонический
+  справочник без явного владельца. Любой залогиненный юзер триггерит
+  admin/cron seed. DELETE через API нет — append-only.
+- **Instruments — личные** (`user_id IS NOT NULL`, миграция 0008):
+  актив, которым владеет конкретный юзер (`real_estate` / `vehicle` /
+  `other_asset`). Полный CRUD для владельца через `/instruments`
+  эндпоинты. DELETE возвращает 409 при активных позициях
+  (FK `positions.instrument_id ON DELETE RESTRICT`). Currency и
+  asset_class неизменяемы у личного инструмента — смена через
+  delete + recreate, чтобы не ломать историю.
 - **Authorization** (defense-in-depth): service-функции принимают
   `userID` первым параметром; repository-запросы фильтруют
   `WHERE user_id = $1`. На чужой ресурс — 404, не 403 (не палим
@@ -293,6 +320,19 @@ API через `Authorization: Bearer ${ADMIN_API_KEY}`.
 `/portfolio` поля `priceFetchedAt` стареют, и API помечает позицию
 `priceStale=true`.
 
+**Cron трогает только глобальные инструменты.** Admin-эндпоинт
+`POST /admin/prices` использует SQL-предикат `WHERE user_id IS NULL`
+внутри UPSERT (см. `UpsertGlobalPrice`) — попытка обновить цену
+личного инструмента вернёт `failed` без побочного эффекта. CHECK
+`instruments_scope_class_check` дополнительно гарантирует, что cron
+физически не может создать строку с `user_id IS NOT NULL`. Это
+структурный инвариант, а не service-layer convention.
+
+**Cash и личные активы никогда не помечаются stale**: цены на них
+авторитативны (по определению — для cash; и пользовательски заданные —
+для `real_estate`/`vehicle`/`other_asset`), таймстамп `fetched_at`
+не несёт сигнал о свежести.
+
 ### 4.3. FX курсы
 
 - Daily — внутренним scheduler-ом API (`0 6 * * *`), плюс ещё раз через
@@ -325,6 +365,11 @@ API через `Authorization: Bearer ${ADMIN_API_KEY}`.
   идемпотентными в рамках UTC-дня.
 - Retention — вечно. Объём (~90KB/год/юзер) пренебрежим; downsampling
   и TTL — отложено до явной потребности.
+- Snapshot хранит только агрегаты — `grand_total`, `by_asset_class`
+  (keyed by class string), `by_currency` (by currency string),
+  `by_account` (by account UUID). **Instrument_id нигде не хранится**.
+  Удаление личного инструмента (миграция 0008) не оставляет dangling-
+  ссылок в исторических снапшотах — суммы уже посчитаны и заморожены.
 
 ---
 

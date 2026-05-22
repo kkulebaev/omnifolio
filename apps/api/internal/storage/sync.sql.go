@@ -61,9 +61,19 @@ type GetInstrumentByExternalIDParams struct {
 	NativeID string
 }
 
-func (q *Queries) GetInstrumentByExternalID(ctx context.Context, arg GetInstrumentByExternalIDParams) (Instrument, error) {
+type GetInstrumentByExternalIDRow struct {
+	ID         uuid.UUID
+	Ticker     string
+	AssetClass string
+	Currency   string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) GetInstrumentByExternalID(ctx context.Context, arg GetInstrumentByExternalIDParams) (GetInstrumentByExternalIDRow, error) {
 	row := q.db.QueryRow(ctx, getInstrumentByExternalID, arg.Source, arg.NativeID)
-	var i Instrument
+	var i GetInstrumentByExternalIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Ticker,

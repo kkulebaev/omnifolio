@@ -36,12 +36,14 @@ import type {
   ConflictResponse,
   CreateAccountRequest,
   CreateDepositRequest,
+  CreatePersonalInstrumentRequest,
   CreatePositionRequest,
   Deposit,
   DepositList,
   GetPortfolioHistoryParams,
   GetPortfolioParams,
   Health,
+  Instrument,
   InstrumentList,
   ListInstrumentsParams,
   LoginRequest,
@@ -50,10 +52,12 @@ import type {
   PortfolioHistory,
   Position,
   SearchInstrumentsParams,
+  SetInstrumentPriceRequest,
   TInvestPreviewRequest,
   TInvestPreviewResponse,
   UnauthorizedResponse,
   UpdateAccountRequest,
+  UpdateInstrumentRequest,
   UpdatePositionRequest,
   User,
   ValidationErrorResponse
@@ -1273,6 +1277,305 @@ export function useListInstruments<TData = Awaited<ReturnType<typeof listInstrum
 
 
 
+
+export const getCreateInstrumentUrl = () => {
+
+
+
+
+  return `/instruments`
+}
+
+/**
+ * Creates a personal instrument owned by the caller. Restricted to manual asset
+classes (`real_estate`, `vehicle`, `other_asset`); exchange-traded and cash
+classes are global-only and maintained by the cron worker.
+
+ * @summary Create a personal instrument (real estate, vehicle, other property)
+ */
+export const createInstrument = async (createPersonalInstrumentRequest: CreatePersonalInstrumentRequest, options?: RequestInit): Promise<Instrument> => {
+
+  return fetcher<Instrument>(getCreateInstrumentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createPersonalInstrumentRequest,)
+  }
+);}
+
+
+
+
+export const getCreateInstrumentMutationOptions = <TError = UnauthorizedResponse | ConflictResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInstrument>>, TError,{data: CreatePersonalInstrumentRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInstrument>>, TError,{data: CreatePersonalInstrumentRequest}, TContext> => {
+
+const mutationKey = ['createInstrument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInstrument>>, {data: CreatePersonalInstrumentRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createInstrument(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInstrumentMutationResult = NonNullable<Awaited<ReturnType<typeof createInstrument>>>
+    export type CreateInstrumentMutationBody = CreatePersonalInstrumentRequest
+    export type CreateInstrumentMutationError = UnauthorizedResponse | ConflictResponse | ValidationErrorResponse
+
+    /**
+ * @summary Create a personal instrument (real estate, vehicle, other property)
+ */
+export const useCreateInstrument = <TError = UnauthorizedResponse | ConflictResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInstrument>>, TError,{data: CreatePersonalInstrumentRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof createInstrument>>,
+        TError,
+        {data: CreatePersonalInstrumentRequest},
+        TContext
+      > => {
+      return useMutation(getCreateInstrumentMutationOptions(options), queryClient);
+    }
+
+export const getUpdateInstrumentUrl = (instrumentId: string,) => {
+
+
+
+
+  return `/instruments/${instrumentId}`
+}
+
+/**
+ * Renames or re-tickers a personal instrument owned by the caller.
+`currency` and `assetClass` are immutable to preserve historical price semantics.
+
+ * @summary Update a personal instrument (rename)
+ */
+export const updateInstrument = async (instrumentId: string,
+    updateInstrumentRequest: UpdateInstrumentRequest, options?: RequestInit): Promise<Instrument> => {
+
+  return fetcher<Instrument>(getUpdateInstrumentUrl(instrumentId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateInstrumentRequest,)
+  }
+);}
+
+
+
+
+export const getUpdateInstrumentMutationOptions = <TError = UnauthorizedResponse | NotFoundResponse | ConflictResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInstrument>>, TError,{instrumentId: string;data: UpdateInstrumentRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInstrument>>, TError,{instrumentId: string;data: UpdateInstrumentRequest}, TContext> => {
+
+const mutationKey = ['updateInstrument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInstrument>>, {instrumentId: string;data: UpdateInstrumentRequest}> = (props) => {
+          const {instrumentId,data} = props ?? {};
+
+          return  updateInstrument(instrumentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInstrumentMutationResult = NonNullable<Awaited<ReturnType<typeof updateInstrument>>>
+    export type UpdateInstrumentMutationBody = UpdateInstrumentRequest
+    export type UpdateInstrumentMutationError = UnauthorizedResponse | NotFoundResponse | ConflictResponse | ValidationErrorResponse
+
+    /**
+ * @summary Update a personal instrument (rename)
+ */
+export const useUpdateInstrument = <TError = UnauthorizedResponse | NotFoundResponse | ConflictResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInstrument>>, TError,{instrumentId: string;data: UpdateInstrumentRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof updateInstrument>>,
+        TError,
+        {instrumentId: string;data: UpdateInstrumentRequest},
+        TContext
+      > => {
+      return useMutation(getUpdateInstrumentMutationOptions(options), queryClient);
+    }
+
+export const getDeleteInstrumentUrl = (instrumentId: string,) => {
+
+
+
+
+  return `/instruments/${instrumentId}`
+}
+
+/**
+ * Deletes a personal instrument owned by the caller. Returns 409 if any
+position references it — remove positions first.
+
+ * @summary Delete a personal instrument
+ */
+export const deleteInstrument = async (instrumentId: string, options?: RequestInit): Promise<void> => {
+
+  return fetcher<void>(getDeleteInstrumentUrl(instrumentId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteInstrumentMutationOptions = <TError = UnauthorizedResponse | NotFoundResponse | ConflictResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInstrument>>, TError,{instrumentId: string}, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInstrument>>, TError,{instrumentId: string}, TContext> => {
+
+const mutationKey = ['deleteInstrument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInstrument>>, {instrumentId: string}> = (props) => {
+          const {instrumentId} = props ?? {};
+
+          return  deleteInstrument(instrumentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInstrumentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInstrument>>>
+
+    export type DeleteInstrumentMutationError = UnauthorizedResponse | NotFoundResponse | ConflictResponse
+
+    /**
+ * @summary Delete a personal instrument
+ */
+export const useDeleteInstrument = <TError = UnauthorizedResponse | NotFoundResponse | ConflictResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInstrument>>, TError,{instrumentId: string}, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof deleteInstrument>>,
+        TError,
+        {instrumentId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteInstrumentMutationOptions(options), queryClient);
+    }
+
+export const getSetInstrumentPriceUrl = (instrumentId: string,) => {
+
+
+
+
+  return `/instruments/${instrumentId}/price`
+}
+
+/**
+ * Sets the latest price of a personal instrument. Ownership is enforced at
+the SQL level inside the UPSERT statement; not-yours and not-found are
+indistinguishable (both return 404).
+
+ * @summary Update the current price of a personal instrument
+ */
+export const setInstrumentPrice = async (instrumentId: string,
+    setInstrumentPriceRequest: SetInstrumentPriceRequest, options?: RequestInit): Promise<void> => {
+
+  return fetcher<void>(getSetInstrumentPriceUrl(instrumentId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setInstrumentPriceRequest,)
+  }
+);}
+
+
+
+
+export const getSetInstrumentPriceMutationOptions = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setInstrumentPrice>>, TError,{instrumentId: string;data: SetInstrumentPriceRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof setInstrumentPrice>>, TError,{instrumentId: string;data: SetInstrumentPriceRequest}, TContext> => {
+
+const mutationKey = ['setInstrumentPrice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setInstrumentPrice>>, {instrumentId: string;data: SetInstrumentPriceRequest}> = (props) => {
+          const {instrumentId,data} = props ?? {};
+
+          return  setInstrumentPrice(instrumentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetInstrumentPriceMutationResult = NonNullable<Awaited<ReturnType<typeof setInstrumentPrice>>>
+    export type SetInstrumentPriceMutationBody = SetInstrumentPriceRequest
+    export type SetInstrumentPriceMutationError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse
+
+    /**
+ * @summary Update the current price of a personal instrument
+ */
+export const useSetInstrumentPrice = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setInstrumentPrice>>, TError,{instrumentId: string;data: SetInstrumentPriceRequest}, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof setInstrumentPrice>>,
+        TError,
+        {instrumentId: string;data: SetInstrumentPriceRequest},
+        TContext
+      > => {
+      return useMutation(getSetInstrumentPriceMutationOptions(options), queryClient);
+    }
 
 export const getGetPortfolioUrl = (params?: GetPortfolioParams,) => {
   const normalizedParams = new URLSearchParams();

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { AssetClass } from './assetClass';
+import type { ListInstrumentsScope } from './listInstrumentsScope';
 
 export type ListInstrumentsParams = {
 /**
@@ -15,6 +16,14 @@ export type ListInstrumentsParams = {
  */
 q?: string;
 assetClass?: AssetClass;
+/**
+ * Restrict results to a scope.
+`mine` — caller's personal instruments only.
+`global` — canonical catalog only.
+Omitted — union of both (caller's personal + global).
+
+ */
+scope?: ListInstrumentsScope;
 /**
  * @minimum 1
  * @maximum 100

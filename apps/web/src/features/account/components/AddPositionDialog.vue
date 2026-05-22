@@ -11,18 +11,47 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import AssetFormDialog from "@/features/asset/components/AssetFormDialog.vue";
+import { useAuthStore } from "@/stores/auth";
 
 const props = defineProps<{ open: boolean; accountId: string }>();
 const emit = defineEmits<{ "update:open": [v: boolean] }>();
 
 const queryClient = useQueryClient();
 const createPosition = useCreatePosition();
+const auth = useAuthStore();
 
 const query = ref("");
 const results = ref<Instrument[]>([]);
 const selected = ref<Instrument | null>(null);
 const quantity = ref("");
 const error = ref<string | null>(null);
+
+const showAssetCreate = ref(false);
+
+const assetCreatePrefill = ref<{
+  name?: string;
+  ticker?: string;
+  assetClass?: "real_estate" | "vehicle" | "other_asset";
+  currency?: string;
+}>({});
+
+function openCreateAsset() {
+  const q = query.value.trim();
+  assetCreatePrefill.value = {
+    name: q,
+    ticker: q.toUpperCase().replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 32) || "ASSET",
+    assetClass: "other_asset",
+    currency: auth.user?.displayCurrency ?? "RUB",
+  };
+  showAssetCreate.value = true;
+}
+
+function onAssetCreated(instrument: Instrument) {
+  selected.value = instrument;
+  results.value = [instrument];
+  showAssetCreate.value = false;
+}
 
 let debounce: ReturnType<typeof setTimeout> | undefined;
 watch(query, (q) => {
@@ -50,6 +79,7 @@ watch(
       selected.value = null;
       quantity.value = "";
       error.value = null;
+      showAssetCreate.value = false;
     }
   },
 );
@@ -95,7 +125,16 @@ async function save() {
           <span class="opacity-60"> · {{ r.assetClass }} · {{ r.currency }} · {{ r.name }}</span>
         </li>
       </ul>
-      <p v-else-if="query" class="text-sm opacity-60">Ничего не найдено в каталоге.</p>
+      <div v-else-if="query" class="space-y-2">
+        <p class="text-sm opacity-60">Ничего не найдено в каталоге.</p>
+        <button
+          type="button"
+          class="text-sm underline text-muted-foreground hover:text-foreground"
+          @click="openCreateAsset"
+        >
+          Создать новый актив «{{ query }}»
+        </button>
+      </div>
 
       <div class="space-y-1.5">
         <Label for="qty">Количество</Label>
@@ -112,4 +151,11 @@ async function save() {
       </div>
     </form>
   </Dialog>
+
+  <AssetFormDialog
+    :open="showAssetCreate"
+    :prefill="assetCreatePrefill"
+    @update:open="showAssetCreate = $event"
+    @created="onAssetCreated"
+  />
 </template>

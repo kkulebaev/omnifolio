@@ -94,9 +94,10 @@ func (s *Service) Compute(ctx context.Context, userID uuid.UUID, displayCurrency
 		if row.Price.Valid {
 			price := row.Price.Decimal
 			pos.Price = &price
-			// Cash positions are pegged 1:1 to their currency by definition, so
-			// fetched_at has no meaning — surface it as null and never mark stale.
-			if row.FetchedAt.Valid && pos.AssetClass != "cash" {
+			// Cash + manual asset classes (real_estate / vehicle / other_asset) are
+			// pegged 1:1 to their currency or user-maintained, so fetched_at has no
+			// meaning — surface it as null and never mark stale.
+			if row.FetchedAt.Valid && !neverStale(pos.AssetClass) {
 				t := row.FetchedAt.Time
 				pos.PriceFetchedAt = &t
 				if now.Sub(t) > priceFreshness {
@@ -132,4 +133,15 @@ func (s *Service) Compute(ctx context.Context, userID uuid.UUID, displayCurrency
 
 func sumOr(prev, add decimal.Decimal) decimal.Decimal {
 	return prev.Add(add)
+}
+
+// neverStale reports whether the asset class has no concept of a refreshable
+// price feed: cash is pegged 1:1 to its currency; manual asset classes are
+// user-maintained and only change when the user sets a new price.
+func neverStale(ac string) bool {
+	switch ac {
+	case "cash", "real_estate", "vehicle", "other_asset":
+		return true
+	}
+	return false
 }

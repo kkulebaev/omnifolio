@@ -53,7 +53,7 @@ func (s *Service) Create(ctx context.Context, userID, accountID, instrumentID uu
 		}
 		return Position{}, fmt.Errorf("ownership check: %w", err)
 	}
-	if _, err := s.insts.Get(ctx, instrumentID); err != nil {
+	if _, err := s.insts.Get(ctx, userID, instrumentID); err != nil {
 		if errors.Is(err, instrument.ErrNotFound) {
 			return Position{}, ErrInstrumentNotFound
 		}

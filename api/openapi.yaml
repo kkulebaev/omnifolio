@@ -334,6 +334,17 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/AssetClass"
+        - name: scope
+          in: query
+          required: false
+          description: |
+            Restrict results to a scope.
+            `mine` — caller's personal instruments only.
+            `global` — canonical catalog only.
+            Omitted — union of both (caller's personal + global).
+          schema:
+            type: string
+            enum: [mine, global]
         - name: limit
           in: query
           required: false
@@ -358,6 +369,108 @@ paths:
                 $ref: "#/components/schemas/InstrumentList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [instruments]
+      summary: Create a personal instrument (real estate, vehicle, other property)
+      operationId: createInstrument
+      description: |
+        Creates a personal instrument owned by the caller. Restricted to manual asset
+        classes (`real_estate`, `vehicle`, `other_asset`); exchange-traded and cash
+        classes are global-only and maintained by the cron worker.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePersonalInstrumentRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instrument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /instruments/{instrumentId}:
+    parameters:
+      - $ref: "#/components/parameters/InstrumentId"
+    patch:
+      tags: [instruments]
+      summary: Update a personal instrument (rename)
+      operationId: updateInstrument
+      description: |
+        Renames or re-tickers a personal instrument owned by the caller.
+        `currency` and `assetClass` are immutable to preserve historical price semantics.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInstrumentRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instrument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [instruments]
+      summary: Delete a personal instrument
+      operationId: deleteInstrument
+      description: |
+        Deletes a personal instrument owned by the caller. Returns 409 if any
+        position references it — remove positions first.
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /instruments/{instrumentId}/price:
+    parameters:
+      - $ref: "#/components/parameters/InstrumentId"
+    put:
+      tags: [instruments]
+      summary: Update the current price of a personal instrument
+      operationId: setInstrumentPrice
+      description: |
+        Sets the latest price of a personal instrument. Ownership is enforced at
+        the SQL level inside the UPSERT statement; not-yours and not-found are
+        indistinguishable (both return 404).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetInstrumentPriceRequest"
+      responses:
+        "204":
+          description: Price updated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /portfolio:
     get:
@@ -711,11 +824,18 @@ components:
 
     AssetClass:
       type: string
-      enum: [ru_stock, ru_bond, ru_etf, us_stock, us_etf, crypto, cash]
+      enum: [ru_stock, ru_bond, ru_etf, us_stock, us_etf, crypto, cash, real_estate, vehicle, other_asset]
+
+    InstrumentScope:
+      type: string
+      description: |
+        `global` — canonical catalog row maintained by cron (exchange-traded / cash classes).
+        `personal` — row owned by the calling user (manual asset classes: real_estate, vehicle, other_asset).
+      enum: [global, personal]
 
     Instrument:
       type: object
-      required: [id, ticker, assetClass, currency, name, createdAt, updatedAt]
+      required: [id, ticker, assetClass, currency, name, scope, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -729,6 +849,13 @@ components:
           pattern: "^[A-Z]{3,5}$"
         name:
           type: string
+        scope:
+          $ref: "#/components/schemas/InstrumentScope"
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Owner user id. Null for global rows, set for personal rows.
         createdAt:
           type: string
           format: date-time
@@ -756,6 +883,53 @@ components:
           type: integer
           minimum: 0
           description: Total instruments matching the filter (for pagination).
+
+    CreatePersonalInstrumentRequest:
+      type: object
+      required: [ticker, name, assetClass, currency, initialPrice]
+      properties:
+        ticker:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: Short label / identifier (user-visible).
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        assetClass:
+          type: string
+          enum: [real_estate, vehicle, other_asset]
+          description: Personal-only asset classes. Exchange/cash classes are rejected.
+        currency:
+          type: string
+          pattern: "^[A-Z]{3,5}$"
+        initialPrice:
+          type: string
+          description: Positive decimal as string, e.g. "12000000".
+          example: "12000000"
+
+    UpdateInstrumentRequest:
+      type: object
+      description: |
+        Edit a personal instrument. `currency` and `assetClass` are intentionally
+        not editable here — change those by deleting and re-creating.
+      properties:
+        ticker:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    SetInstrumentPriceRequest:
+      type: object
+      required: [price]
+      properties:
+        price:
+          type: string
+          description: Positive decimal as string.
+          example: "13500000"
 
     Position:
       type: object

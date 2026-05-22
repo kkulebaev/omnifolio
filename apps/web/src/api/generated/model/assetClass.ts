@@ -17,4 +17,7 @@ export const AssetClass = {
   us_etf: 'us_etf',
   crypto: 'crypto',
   cash: 'cash',
+  real_estate: 'real_estate',
+  vehicle: 'vehicle',
+  other_asset: 'other_asset',
 } as const;

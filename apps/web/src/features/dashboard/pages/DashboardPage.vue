@@ -25,6 +25,7 @@ import {
 } from "@/lib/formatters";
 import { pluralRu } from "@/lib/plural";
 import type { AssetClass } from "@/api/generated/model/assetClass";
+import { ASSET_CLASS_LABELS, ASSET_CLASS_SHORT_LABELS } from "@/lib/assetClass";
 
 const ui = useUiStore();
 
@@ -190,24 +191,17 @@ const accountCount = computed(() => {
 
 const SUMMARY_CLASSES: AssetClass[] = ["ru_stock", "us_stock", "crypto", "cash"];
 
-const CLASS_LABEL: Record<AssetClass, string> = {
-  ru_stock: "Российские акции",
-  us_stock: "Американские акции",
-  crypto: "Криптовалюты",
-  cash: "Кэш",
-  ru_bond: "Российские облигации",
-  ru_etf: "Российские ETF",
-  us_etf: "Американские ETF",
-};
-
-const CLASS_BADGE: Record<AssetClass, { label: string; tintClass: string }> = {
-  ru_stock: { label: "ru акция", tintClass: "bg-asset-ru-stock" },
-  us_stock: { label: "us акция", tintClass: "bg-asset-us-stock" },
-  crypto: { label: "crypto", tintClass: "bg-asset-crypto" },
-  cash: { label: "cash", tintClass: "bg-asset-cash" },
-  ru_bond: { label: "ru обл", tintClass: "bg-asset-ru-bond" },
-  ru_etf: { label: "ru etf", tintClass: "bg-asset-ru-etf" },
-  us_etf: { label: "us etf", tintClass: "bg-asset-us-etf" },
+const CLASS_BADGE: Record<AssetClass, { tintClass: string }> = {
+  ru_stock: { tintClass: "bg-asset-ru-stock" },
+  us_stock: { tintClass: "bg-asset-us-stock" },
+  crypto: { tintClass: "bg-asset-crypto" },
+  cash: { tintClass: "bg-asset-cash" },
+  ru_bond: { tintClass: "bg-asset-ru-bond" },
+  ru_etf: { tintClass: "bg-asset-ru-etf" },
+  us_etf: { tintClass: "bg-asset-us-etf" },
+  real_estate: { tintClass: "bg-soft" },
+  vehicle: { tintClass: "bg-soft" },
+  other_asset: { tintClass: "bg-soft" },
 };
 
 const summaryCards = computed(() =>
@@ -215,7 +209,7 @@ const summaryCards = computed(() =>
     const value = byAssetClass.value[k] ?? 0;
     return {
       key: k,
-      label: CLASS_LABEL[k],
+      label: ASSET_CLASS_LABELS[k] ?? k,
       value,
       share: grandTotal.value > 0 ? value / grandTotal.value : 0,
     };
@@ -227,7 +221,7 @@ const classFilterLabel = computed(() => {
   if (n === 0) return "Все классы";
   if (n === 1) {
     const c = selectedClasses.value.values().next().value as AssetClass;
-    return CLASS_BADGE[c]?.label ?? c;
+    return ASSET_CLASS_SHORT_LABELS[c] ?? c;
   }
   return `Классы: ${n}`;
 });
@@ -388,8 +382,8 @@ function pluralPositions(n: number): string {
                   <span
                     class="num uppercase text-xs px-2 py-0.5 rounded-sm tracking-wider"
                     :class="CLASS_BADGE[c]?.tintClass ?? 'bg-soft'"
-                  >{{ CLASS_BADGE[c]?.label ?? c }}</span>
-                  <span class="text-muted-foreground text-xs">{{ CLASS_LABEL[c] ?? c }}</span>
+                  >{{ ASSET_CLASS_SHORT_LABELS[c] ?? c }}</span>
+                  <span class="text-muted-foreground text-xs">{{ ASSET_CLASS_LABELS[c] ?? c }}</span>
                 </DropdownMenuCheckboxItem>
                 <template v-if="selectedClasses.size > 0">
                   <DropdownMenuSeparator class="my-1 h-px bg-border" />
@@ -486,7 +480,7 @@ function pluralPositions(n: number): string {
               <span
                 class="num uppercase text-xs px-1.5 py-0.5 rounded-sm text-foreground tracking-wider shrink-0"
                 :class="CLASS_BADGE[p.assetClass]?.tintClass ?? 'bg-soft'"
-              >{{ CLASS_BADGE[p.assetClass]?.label ?? p.assetClass }}</span>
+              >{{ ASSET_CLASS_SHORT_LABELS[p.assetClass] ?? p.assetClass }}</span>
             </div>
             <span
               :class="['num', blurClass, 'text-xs font-medium shrink-0']"
@@ -554,7 +548,7 @@ function pluralPositions(n: number): string {
                 <span
                   class="num uppercase text-xs px-2 py-0.5 rounded-sm text-foreground tracking-wider"
                   :class="CLASS_BADGE[p.assetClass]?.tintClass ?? 'bg-soft'"
-                >{{ CLASS_BADGE[p.assetClass]?.label ?? p.assetClass }}</span>
+                >{{ ASSET_CLASS_SHORT_LABELS[p.assetClass] ?? p.assetClass }}</span>
               </td>
               <td class="px-3 py-1.5 text-muted-foreground text-xs">
                 <span v-if="p.isMerged" class="inline-flex items-center gap-1">

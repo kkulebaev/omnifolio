@@ -55,6 +55,7 @@ type Instrument struct {
 	Name       string
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
+	UserID     uuid.NullUUID
 }
 
 type InstrumentExternalID struct {

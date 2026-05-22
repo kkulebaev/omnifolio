@@ -370,7 +370,7 @@ func (s *serverImpl) CreatePosition(ctx context.Context, req oapi.CreatePosition
 		return nil, err
 	}
 
-	inst, err := s.deps.Instrument.Get(ctx, pos.InstrumentID)
+	inst, err := s.deps.Instrument.Get(ctx, user.ID, pos.InstrumentID)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +405,7 @@ func (s *serverImpl) UpdatePosition(ctx context.Context, req oapi.UpdatePosition
 		return nil, err
 	}
 
-	inst, err := s.deps.Instrument.Get(ctx, pos.InstrumentID)
+	inst, err := s.deps.Instrument.Get(ctx, user.ID, pos.InstrumentID)
 	if err != nil {
 		return nil, err
 	}
@@ -434,12 +434,13 @@ func (s *serverImpl) DeletePosition(ctx context.Context, req oapi.DeletePosition
 // ----- instruments -----
 
 func (s *serverImpl) SearchInstruments(ctx context.Context, req oapi.SearchInstrumentsRequestObject) (oapi.SearchInstrumentsResponseObject, error) {
-	if _, ok := auth.UserFromContext(ctx); !ok {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
 		return oapi.SearchInstruments401ApplicationProblemPlusJSONResponse{
 			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
 		}, nil
 	}
-	rows, err := s.deps.Instrument.Search(ctx, req.Params.Q)
+	rows, err := s.deps.Instrument.Search(ctx, user.ID, req.Params.Q)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +452,8 @@ func (s *serverImpl) SearchInstruments(ctx context.Context, req oapi.SearchInstr
 }
 
 func (s *serverImpl) ListInstruments(ctx context.Context, req oapi.ListInstrumentsRequestObject) (oapi.ListInstrumentsResponseObject, error) {
-	if _, ok := auth.UserFromContext(ctx); !ok {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
 		return oapi.ListInstruments401ApplicationProblemPlusJSONResponse{
 			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
 		}, nil
@@ -464,6 +466,9 @@ func (s *serverImpl) ListInstruments(ctx context.Context, req oapi.ListInstrumen
 	if req.Params.AssetClass != nil {
 		in.AssetClass = string(*req.Params.AssetClass)
 	}
+	if req.Params.Scope != nil {
+		in.Scope = string(*req.Params.Scope)
+	}
 	if req.Params.Limit != nil {
 		in.Limit = int32(*req.Params.Limit)
 	}
@@ -471,7 +476,7 @@ func (s *serverImpl) ListInstruments(ctx context.Context, req oapi.ListInstrumen
 		in.Offset = int32(*req.Params.Offset)
 	}
 
-	res, err := s.deps.Instrument.List(ctx, in)
+	res, err := s.deps.Instrument.List(ctx, user.ID, in)
 	if err != nil {
 		return nil, err
 	}
@@ -480,6 +485,130 @@ func (s *serverImpl) ListInstruments(ctx context.Context, req oapi.ListInstrumen
 		items[i] = toOapiInstrument(x)
 	}
 	return oapi.ListInstruments200JSONResponse{Items: items, Total: int(res.Total)}, nil
+}
+
+func (s *serverImpl) CreateInstrument(ctx context.Context, req oapi.CreateInstrumentRequestObject) (oapi.CreateInstrumentResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.CreateInstrument401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return createInstrumentValidationResp("missing body", nil), nil
+	}
+
+	price, err := decimal.NewFromString(req.Body.InitialPrice)
+	if err != nil || price.Sign() <= 0 {
+		return createInstrumentValidationResp("Invalid initial price",
+			map[string]string{"initialPrice": "must be a positive decimal"}), nil
+	}
+
+	inst, err := s.deps.Instrument.CreatePersonal(ctx, user.ID, instrument.CreateInput{
+		Ticker:     req.Body.Ticker,
+		AssetClass: string(req.Body.AssetClass),
+		Currency:   req.Body.Currency,
+		Name:       req.Body.Name,
+	}, price)
+	if err != nil {
+		switch {
+		case errors.Is(err, instrument.ErrInvalidAssetClass):
+			return createInstrumentValidationResp("Invalid asset class for personal instrument",
+				map[string]string{"assetClass": "must be one of: real_estate, vehicle, other_asset"}), nil
+		case errors.Is(err, instrument.ErrAlreadyExists):
+			return oapi.CreateInstrument409ApplicationProblemPlusJSONResponse{
+				ConflictApplicationProblemPlusJSONResponse: oapi.ConflictApplicationProblemPlusJSONResponse(conflictProblem("instrument with this ticker + asset class already exists")),
+			}, nil
+		}
+		return nil, err
+	}
+	s.deps.Logger.Info("instrument: personal created",
+		"user_id", user.ID, "instrument_id", inst.ID, "asset_class", inst.AssetClass)
+	return oapi.CreateInstrument201JSONResponse(toOapiInstrument(inst)), nil
+}
+
+func (s *serverImpl) UpdateInstrument(ctx context.Context, req oapi.UpdateInstrumentRequestObject) (oapi.UpdateInstrumentResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.UpdateInstrument401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return updateInstrumentValidationResp("missing body", nil), nil
+	}
+	if req.Body.Name == nil && req.Body.Ticker == nil {
+		return updateInstrumentValidationResp("Validation failed",
+			map[string]string{"body": "at least one of name or ticker is required"}), nil
+	}
+
+	inst, err := s.deps.Instrument.Rename(ctx, user.ID, req.InstrumentId, req.Body.Name, req.Body.Ticker)
+	if err != nil {
+		switch {
+		case errors.Is(err, instrument.ErrNotFound):
+			return oapi.UpdateInstrument404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("instrument")),
+			}, nil
+		case errors.Is(err, instrument.ErrAlreadyExists):
+			return oapi.UpdateInstrument409ApplicationProblemPlusJSONResponse{
+				ConflictApplicationProblemPlusJSONResponse: oapi.ConflictApplicationProblemPlusJSONResponse(conflictProblem("instrument with this ticker + asset class already exists")),
+			}, nil
+		}
+		return nil, err
+	}
+	return oapi.UpdateInstrument200JSONResponse(toOapiInstrument(inst)), nil
+}
+
+func (s *serverImpl) DeleteInstrument(ctx context.Context, req oapi.DeleteInstrumentRequestObject) (oapi.DeleteInstrumentResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.DeleteInstrument401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if err := s.deps.Instrument.DeletePersonal(ctx, user.ID, req.InstrumentId); err != nil {
+		switch {
+		case errors.Is(err, instrument.ErrNotFound):
+			return oapi.DeleteInstrument404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("instrument")),
+			}, nil
+		case errors.Is(err, instrument.ErrHasPositions):
+			return oapi.DeleteInstrument409ApplicationProblemPlusJSONResponse{
+				ConflictApplicationProblemPlusJSONResponse: oapi.ConflictApplicationProblemPlusJSONResponse(conflictProblem("remove positions first")),
+			}, nil
+		}
+		return nil, err
+	}
+	s.deps.Logger.Info("instrument: personal deleted",
+		"user_id", user.ID, "instrument_id", req.InstrumentId)
+	return oapi.DeleteInstrument204Response{}, nil
+}
+
+func (s *serverImpl) SetInstrumentPrice(ctx context.Context, req oapi.SetInstrumentPriceRequestObject) (oapi.SetInstrumentPriceResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.SetInstrumentPrice401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return setInstrumentPriceValidationResp("missing body", nil), nil
+	}
+	price, err := decimal.NewFromString(req.Body.Price)
+	if err != nil || price.Sign() <= 0 {
+		return setInstrumentPriceValidationResp("Invalid price",
+			map[string]string{"price": "must be a positive decimal"}), nil
+	}
+
+	if err := s.deps.Instrument.SetPrice(ctx, user.ID, req.InstrumentId, price); err != nil {
+		if errors.Is(err, instrument.ErrNotFound) {
+			return oapi.SetInstrumentPrice404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("instrument")),
+			}, nil
+		}
+		return nil, err
+	}
+	return oapi.SetInstrumentPrice204Response{}, nil
 }
 
 // ----- portfolio -----
@@ -759,16 +888,31 @@ func toOapiInstrument(i instrument.Instrument) oapi.Instrument {
 		Name:       i.Name,
 		CreatedAt:  i.CreatedAt,
 		UpdatedAt:  i.UpdatedAt,
+		Scope:      oapi.InstrumentScope(i.Scope()),
+	}
+	if i.UserID != nil {
+		u := *i.UserID
+		out.UserId = &u
 	}
 	if i.CurrentPrice != nil {
 		s := i.CurrentPrice.String()
 		out.CurrentPrice = &s
 	}
-	if i.PriceFetchedAt != nil && i.AssetClass != "cash" {
+	if i.PriceFetchedAt != nil && !instrumentNeverStale(i.AssetClass) {
 		t := *i.PriceFetchedAt
 		out.PriceUpdatedAt = &t
 	}
 	return out
+}
+
+// instrumentNeverStale mirrors portfolio.neverStale; kept here to avoid a
+// public coupling between the two packages.
+func instrumentNeverStale(ac string) bool {
+	switch ac {
+	case "cash", "real_estate", "vehicle", "other_asset":
+		return true
+	}
+	return false
 }
 
 func toOapiPosition(p position.Position, inst instrument.Instrument) oapi.Position {
@@ -879,6 +1023,15 @@ func updatePositionValidationResp(title string, fields map[string]string) oapi.U
 }
 func createDepositValidationResp(title string, fields map[string]string) oapi.CreateDeposit422ApplicationProblemPlusJSONResponse {
 	return oapi.CreateDeposit422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func createInstrumentValidationResp(title string, fields map[string]string) oapi.CreateInstrument422ApplicationProblemPlusJSONResponse {
+	return oapi.CreateInstrument422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func updateInstrumentValidationResp(title string, fields map[string]string) oapi.UpdateInstrument422ApplicationProblemPlusJSONResponse {
+	return oapi.UpdateInstrument422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func setInstrumentPriceValidationResp(title string, fields map[string]string) oapi.SetInstrumentPrice422ApplicationProblemPlusJSONResponse {
+	return oapi.SetInstrumentPrice422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
 }
 // ----- strict server error handlers -----
 

@@ -5,6 +5,7 @@ import { AssetClass } from "@/api/generated/model/assetClass";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/formatters";
+import { ASSET_CLASS_SHORT_LABELS } from "@/lib/assetClass";
 import {
   Table,
   TableHeader,
@@ -37,6 +38,7 @@ watch(assetClass, () => {
 const params = computed(() => ({
   q: debouncedQ.value || undefined,
   assetClass: (assetClass.value as AssetClass) || undefined,
+  scope: "global" as const,
   limit: PAGE_SIZE,
   offset: offset.value,
 }));
@@ -62,16 +64,6 @@ const from = computed(() => (items.value.length ? offset.value + 1 : 0));
 const to = computed(() => offset.value + items.value.length);
 const canPrev = computed(() => offset.value > 0);
 const canNext = computed(() => offset.value + PAGE_SIZE < total.value);
-
-const CLASS_LABEL: Record<AssetClass, string> = {
-  ru_stock: "ru акция",
-  us_stock: "us акция",
-  ru_bond: "ru обл.",
-  ru_etf: "ru etf",
-  us_etf: "us etf",
-  crypto: "crypto",
-  cash: "cash",
-};
 
 const FILTERS: { value: AssetClass | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -157,7 +149,7 @@ function nextPage() {
               <span
                 class="num uppercase text-xs px-2 py-0.5 rounded bg-soft tracking-wider"
               >
-                {{ CLASS_LABEL[i.assetClass] ?? i.assetClass }}
+                {{ ASSET_CLASS_SHORT_LABELS[i.assetClass] ?? i.assetClass }}
               </span>
             </TableCell>
             <TableCell class="num">{{ i.currency }}</TableCell>

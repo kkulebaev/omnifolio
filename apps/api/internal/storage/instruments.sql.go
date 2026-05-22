@@ -19,45 +19,129 @@ FROM instruments
 WHERE
     ($1::text = '' OR ticker ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
     AND ($2::text = '' OR asset_class = $2)
+    AND (
+        $3::text = 'mine'   AND user_id = $4
+     OR $3::text = 'global' AND user_id IS NULL
+     OR $3::text = ''       AND (user_id IS NULL OR user_id = $4)
+    )
 `
 
 type CountInstrumentsParams struct {
 	Q          string
 	AssetClass string
+	Scope      string
+	CallerID   uuid.NullUUID
 }
 
 func (q *Queries) CountInstruments(ctx context.Context, arg CountInstrumentsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countInstruments, arg.Q, arg.AssetClass)
+	row := q.db.QueryRow(ctx, countInstruments,
+		arg.Q,
+		arg.AssetClass,
+		arg.Scope,
+		arg.CallerID,
+	)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
 const createInstrument = `-- name: CreateInstrument :one
-INSERT INTO instruments (id, ticker, asset_class, currency, name)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, ticker, asset_class, currency, name, created_at, updated_at
+INSERT INTO instruments (id, user_id, ticker, asset_class, currency, name)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, user_id, ticker, asset_class, currency, name, created_at, updated_at
 `
 
 type CreateInstrumentParams struct {
 	ID         uuid.UUID
+	UserID     uuid.NullUUID
 	Ticker     string
 	AssetClass string
 	Currency   string
 	Name       string
 }
 
-func (q *Queries) CreateInstrument(ctx context.Context, arg CreateInstrumentParams) (Instrument, error) {
+type CreateInstrumentRow struct {
+	ID         uuid.UUID
+	UserID     uuid.NullUUID
+	Ticker     string
+	AssetClass string
+	Currency   string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) CreateInstrument(ctx context.Context, arg CreateInstrumentParams) (CreateInstrumentRow, error) {
 	row := q.db.QueryRow(ctx, createInstrument,
 		arg.ID,
+		arg.UserID,
 		arg.Ticker,
 		arg.AssetClass,
 		arg.Currency,
 		arg.Name,
 	)
-	var i Instrument
+	var i CreateInstrumentRow
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
+		&i.Ticker,
+		&i.AssetClass,
+		&i.Currency,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deletePersonalInstrument = `-- name: DeletePersonalInstrument :execrows
+DELETE FROM instruments
+WHERE id = $1 AND user_id = $2
+`
+
+type DeletePersonalInstrumentParams struct {
+	ID     uuid.UUID
+	UserID uuid.NullUUID
+}
+
+// Personal-only delete. FK positions.instrument_id ON DELETE RESTRICT raises 23503
+// which the service maps to ErrHasPositions → 409.
+func (q *Queries) DeletePersonalInstrument(ctx context.Context, arg DeletePersonalInstrumentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deletePersonalInstrument, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getGlobalInstrumentByTickerAssetClass = `-- name: GetGlobalInstrumentByTickerAssetClass :one
+SELECT id, user_id, ticker, asset_class, currency, name, created_at, updated_at
+FROM instruments
+WHERE LOWER(ticker) = LOWER($1) AND asset_class = $2 AND user_id IS NULL
+`
+
+type GetGlobalInstrumentByTickerAssetClassParams struct {
+	Lower      string
+	AssetClass string
+}
+
+type GetGlobalInstrumentByTickerAssetClassRow struct {
+	ID         uuid.UUID
+	UserID     uuid.NullUUID
+	Ticker     string
+	AssetClass string
+	Currency   string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) GetGlobalInstrumentByTickerAssetClass(ctx context.Context, arg GetGlobalInstrumentByTickerAssetClassParams) (GetGlobalInstrumentByTickerAssetClassRow, error) {
+	row := q.db.QueryRow(ctx, getGlobalInstrumentByTickerAssetClass, arg.Lower, arg.AssetClass)
+	var i GetGlobalInstrumentByTickerAssetClassRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
 		&i.Ticker,
 		&i.AssetClass,
 		&i.Currency,
@@ -69,16 +153,28 @@ func (q *Queries) CreateInstrument(ctx context.Context, arg CreateInstrumentPara
 }
 
 const getInstrumentByID = `-- name: GetInstrumentByID :one
-SELECT id, ticker, asset_class, currency, name, created_at, updated_at
+SELECT id, user_id, ticker, asset_class, currency, name, created_at, updated_at
 FROM instruments
 WHERE id = $1
 `
 
-func (q *Queries) GetInstrumentByID(ctx context.Context, id uuid.UUID) (Instrument, error) {
+type GetInstrumentByIDRow struct {
+	ID         uuid.UUID
+	UserID     uuid.NullUUID
+	Ticker     string
+	AssetClass string
+	Currency   string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) GetInstrumentByID(ctx context.Context, id uuid.UUID) (GetInstrumentByIDRow, error) {
 	row := q.db.QueryRow(ctx, getInstrumentByID, id)
-	var i Instrument
+	var i GetInstrumentByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Ticker,
 		&i.AssetClass,
 		&i.Currency,
@@ -89,22 +185,35 @@ func (q *Queries) GetInstrumentByID(ctx context.Context, id uuid.UUID) (Instrume
 	return i, err
 }
 
-const getInstrumentByTickerAssetClass = `-- name: GetInstrumentByTickerAssetClass :one
-SELECT id, ticker, asset_class, currency, name, created_at, updated_at
+const getUserInstrumentByTickerAssetClass = `-- name: GetUserInstrumentByTickerAssetClass :one
+SELECT id, user_id, ticker, asset_class, currency, name, created_at, updated_at
 FROM instruments
-WHERE LOWER(ticker) = LOWER($1) AND asset_class = $2
+WHERE LOWER(ticker) = LOWER($1) AND asset_class = $2 AND user_id = $3
 `
 
-type GetInstrumentByTickerAssetClassParams struct {
+type GetUserInstrumentByTickerAssetClassParams struct {
 	Lower      string
 	AssetClass string
+	UserID     uuid.NullUUID
 }
 
-func (q *Queries) GetInstrumentByTickerAssetClass(ctx context.Context, arg GetInstrumentByTickerAssetClassParams) (Instrument, error) {
-	row := q.db.QueryRow(ctx, getInstrumentByTickerAssetClass, arg.Lower, arg.AssetClass)
-	var i Instrument
+type GetUserInstrumentByTickerAssetClassRow struct {
+	ID         uuid.UUID
+	UserID     uuid.NullUUID
+	Ticker     string
+	AssetClass string
+	Currency   string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) GetUserInstrumentByTickerAssetClass(ctx context.Context, arg GetUserInstrumentByTickerAssetClassParams) (GetUserInstrumentByTickerAssetClassRow, error) {
+	row := q.db.QueryRow(ctx, getUserInstrumentByTickerAssetClass, arg.Lower, arg.AssetClass, arg.UserID)
+	var i GetUserInstrumentByTickerAssetClassRow
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Ticker,
 		&i.AssetClass,
 		&i.Currency,
@@ -117,7 +226,7 @@ func (q *Queries) GetInstrumentByTickerAssetClass(ctx context.Context, arg GetIn
 
 const listInstruments = `-- name: ListInstruments :many
 SELECT
-    i.id, i.ticker, i.asset_class, i.currency, i.name, i.created_at, i.updated_at,
+    i.id, i.user_id, i.ticker, i.asset_class, i.currency, i.name, i.created_at, i.updated_at,
     pr.price        AS current_price,
     pr.fetched_at   AS price_fetched_at
 FROM instruments i
@@ -125,19 +234,27 @@ LEFT JOIN prices pr ON pr.instrument_id = i.id
 WHERE
     ($1::text = '' OR i.ticker ILIKE '%' || $1 || '%' OR i.name ILIKE '%' || $1 || '%')
     AND ($2::text = '' OR i.asset_class = $2)
+    AND (
+        $3::text = 'mine'   AND i.user_id = $4
+     OR $3::text = 'global' AND i.user_id IS NULL
+     OR $3::text = ''       AND (i.user_id IS NULL OR i.user_id = $4)
+    )
 ORDER BY i.ticker
-LIMIT $4 OFFSET $3
+LIMIT $6 OFFSET $5
 `
 
 type ListInstrumentsParams struct {
 	Q          string
 	AssetClass string
+	Scope      string
+	CallerID   uuid.NullUUID
 	Off        int32
 	Lim        int32
 }
 
 type ListInstrumentsRow struct {
 	ID             uuid.UUID
+	UserID         uuid.NullUUID
 	Ticker         string
 	AssetClass     string
 	Currency       string
@@ -152,6 +269,8 @@ func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams
 	rows, err := q.db.Query(ctx, listInstruments,
 		arg.Q,
 		arg.AssetClass,
+		arg.Scope,
+		arg.CallerID,
 		arg.Off,
 		arg.Lim,
 	)
@@ -164,6 +283,7 @@ func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams
 		var i ListInstrumentsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.Ticker,
 			&i.AssetClass,
 			&i.Currency,
@@ -184,24 +304,42 @@ func (q *Queries) ListInstruments(ctx context.Context, arg ListInstrumentsParams
 }
 
 const searchInstruments = `-- name: SearchInstruments :many
-SELECT id, ticker, asset_class, currency, name, created_at, updated_at
+SELECT id, user_id, ticker, asset_class, currency, name, created_at, updated_at
 FROM instruments
-WHERE ticker ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%'
+WHERE (ticker ILIKE '%' || $1 || '%' OR name ILIKE '%' || $1 || '%')
+  AND (user_id IS NULL OR user_id = $2)
 ORDER BY (LOWER(ticker) = LOWER($1)) DESC, ticker
 LIMIT 20
 `
 
-func (q *Queries) SearchInstruments(ctx context.Context, dollar_1 *string) ([]Instrument, error) {
-	rows, err := q.db.Query(ctx, searchInstruments, dollar_1)
+type SearchInstrumentsParams struct {
+	Column1 *string
+	UserID  uuid.NullUUID
+}
+
+type SearchInstrumentsRow struct {
+	ID         uuid.UUID
+	UserID     uuid.NullUUID
+	Ticker     string
+	AssetClass string
+	Currency   string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) SearchInstruments(ctx context.Context, arg SearchInstrumentsParams) ([]SearchInstrumentsRow, error) {
+	rows, err := q.db.Query(ctx, searchInstruments, arg.Column1, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Instrument
+	var items []SearchInstrumentsRow
 	for rows.Next() {
-		var i Instrument
+		var i SearchInstrumentsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.Ticker,
 			&i.AssetClass,
 			&i.Currency,
@@ -217,4 +355,53 @@ func (q *Queries) SearchInstruments(ctx context.Context, dollar_1 *string) ([]In
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateInstrumentMeta = `-- name: UpdateInstrumentMeta :one
+UPDATE instruments
+SET ticker = COALESCE($3::text, ticker),
+    name   = COALESCE($4::text, name),
+    updated_at = now()
+WHERE id = $1 AND user_id = $2
+RETURNING id, user_id, ticker, asset_class, currency, name, created_at, updated_at
+`
+
+type UpdateInstrumentMetaParams struct {
+	ID     uuid.UUID
+	UserID uuid.NullUUID
+	Ticker *string
+	Name   *string
+}
+
+type UpdateInstrumentMetaRow struct {
+	ID         uuid.UUID
+	UserID     uuid.NullUUID
+	Ticker     string
+	AssetClass string
+	Currency   string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+// Personal-only rename. Caller must own the row; non-matching rows return ErrNoRows.
+func (q *Queries) UpdateInstrumentMeta(ctx context.Context, arg UpdateInstrumentMetaParams) (UpdateInstrumentMetaRow, error) {
+	row := q.db.QueryRow(ctx, updateInstrumentMeta,
+		arg.ID,
+		arg.UserID,
+		arg.Ticker,
+		arg.Name,
+	)
+	var i UpdateInstrumentMetaRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Ticker,
+		&i.AssetClass,
+		&i.Currency,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
