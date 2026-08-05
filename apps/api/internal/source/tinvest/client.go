@@ -2,7 +2,9 @@
 // using their REST API (https://russianinvestments.github.io/investAPI/swagger-ui/).
 //
 // The REST API mirrors the gRPC contract — endpoints follow
-//   POST https://invest-public-api.tinkoff.ru/rest/tinkoff.public.invest.api.contract.v1.<Service>/<Method>
+//
+//	POST https://invest-public-api.tinkoff.ru/rest/tinkoff.public.invest.api.contract.v1.<Service>/<Method>
+//
 // with JSON body and a Bearer token. We avoid the official Go SDK to skip its
 // transitive grpc/protobuf dependencies.
 package tinvest
@@ -10,6 +12,9 @@ package tinvest
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +27,14 @@ import (
 
 const apiBase = "https://invest-public-api.tinkoff.ru/rest/tinkoff.public.invest.api.contract.v1"
 
+// Since Sep 2025 T-Bank serves invest-public-api.tinkoff.ru certs under the
+// Russian national CA ("Russian Trusted Root CA"), which is absent from the
+// Mozilla bundle shipped in our Debian/Alpine images. Embed the root so
+// verification succeeds regardless of the base image's trust store.
+//
+//go:embed russian_trusted_ca.pem
+var russianTrustedCA []byte
+
 // Client is a thin REST wrapper. One instance can serve calls with different
 // tokens — token is passed per call.
 type Client struct {
@@ -29,13 +42,28 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return &Client{http: &http.Client{Timeout: 15 * time.Second}}
+	return &Client{http: &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: rootCAs()}},
+	}}
+}
+
+// rootCAs returns the system trust store augmented with the Russian Trusted
+// Root CA. A nil pool (system roots unavailable) falls back to a fresh pool
+// holding only the embedded root — enough to reach T-Invest.
+func rootCAs() *x509.CertPool {
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	pool.AppendCertsFromPEM(russianTrustedCA)
+	return pool
 }
 
 // errorResponse mirrors the gRPC-status payload Tinkoff returns on non-2xx.
 type errorResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code        int    `json:"code"`
+	Message     string `json:"message"`
 	Description string `json:"description"`
 }
 
