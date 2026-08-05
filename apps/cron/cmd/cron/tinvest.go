@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,12 +17,32 @@ import (
 	"github.com/google/uuid"
 )
 
+// Since Sep 2025 T-Bank serves invest-public-api.tinkoff.ru certs under the
+// Russian national CA ("Russian Trusted Root CA"), which is absent from the
+// Mozilla bundle shipped in our base image. Embed the root so verification
+// succeeds regardless of the base image's trust store.
+//
+//go:embed russian_trusted_ca.pem
+var russianTrustedCA []byte
+
+// tinvestRootCAs returns the system trust store augmented with the Russian
+// Trusted Root CA. A nil pool (system roots unavailable) falls back to a fresh
+// pool holding only the embedded root — enough to reach T-Invest.
+func tinvestRootCAs() *x509.CertPool {
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	pool.AppendCertsFromPEM(russianTrustedCA)
+	return pool
+}
+
 const (
-	tinvestAPIBase     = "https://invest-public-api.tinkoff.ru/rest/tinkoff.public.invest.api.contract.v1"
-	tinvestRetries     = 3
-	tinvestPriceBatch  = 100 // GetLastPrices accepts up to 200 figis; stay conservative.
-	tinvestClassMOEX   = "TQBR"
-	tinvestStatusBase  = "INSTRUMENT_STATUS_BASE"
+	tinvestAPIBase    = "https://invest-public-api.tinkoff.ru/rest/tinkoff.public.invest.api.contract.v1"
+	tinvestRetries    = 3
+	tinvestPriceBatch = 100 // GetLastPrices accepts up to 200 figis; stay conservative.
+	tinvestClassMOEX  = "TQBR"
+	tinvestStatusBase = "INSTRUMENT_STATUS_BASE"
 )
 
 type tinvestClient struct {
@@ -28,7 +51,10 @@ type tinvestClient struct {
 }
 
 func newTinvestClient(token string) *tinvestClient {
-	return &tinvestClient{token: token, http: &http.Client{Timeout: httpTimeout}}
+	return &tinvestClient{token: token, http: &http.Client{
+		Timeout:   httpTimeout,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: tinvestRootCAs()}},
+	}}
 }
 
 // quotation is Tinkoff's representation of a precise decimal: integer part
