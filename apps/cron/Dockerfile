@@ -8,7 +8,7 @@ RUN go mod download
 COPY apps/cron ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/cron ./cmd/cron
 
-FROM alpine:3.23
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/cron /usr/local/bin/cron
 ENTRYPOINT ["/usr/local/bin/cron"]
