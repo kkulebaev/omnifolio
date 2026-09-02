@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:24.18.0-alpine AS build
 RUN corepack enable
 WORKDIR /work
 
