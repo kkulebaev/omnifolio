@@ -7,7 +7,8 @@ services:
       POSTGRES_USER: omnifolio
       POSTGRES_PASSWORD: omnifolio
     ports:
-      - "5432:5432"
+      # Переопределяется через POSTGRES_PORT, когда 5432 на хосте занят другой базой.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
