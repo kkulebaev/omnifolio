@@ -25,7 +25,11 @@ import {
 } from "@/lib/formatters";
 import { pluralRu } from "@/lib/plural";
 import type { AssetClass } from "@/api/generated/model/assetClass";
-import { ASSET_CLASS_LABELS, ASSET_CLASS_SHORT_LABELS } from "@/lib/assetClass";
+import {
+  ASSET_CLASS_LABELS,
+  ASSET_CLASS_SHORT_LABELS,
+  PERSONAL_ASSET_CLASSES,
+} from "@/lib/assetClass";
 
 const ui = useUiStore();
 
@@ -189,7 +193,13 @@ const accountCount = computed(() => {
   return set.size;
 });
 
-const SUMMARY_CLASSES: AssetClass[] = ["ru_stock", "us_stock", "crypto", "cash"];
+const SUMMARY_GROUPS: { key: string; label: string; classes: readonly AssetClass[] }[] = [
+  { key: "ru_stock", label: ASSET_CLASS_LABELS.ru_stock, classes: ["ru_stock"] },
+  { key: "us_stock", label: ASSET_CLASS_LABELS.us_stock, classes: ["us_stock"] },
+  { key: "crypto", label: ASSET_CLASS_LABELS.crypto, classes: ["crypto"] },
+  { key: "cash", label: ASSET_CLASS_LABELS.cash, classes: ["cash"] },
+  { key: "personal", label: "Имущество", classes: PERSONAL_ASSET_CLASSES },
+];
 
 const CLASS_BADGE: Record<AssetClass, { tintClass: string }> = {
   ru_stock: { tintClass: "bg-asset-ru-stock" },
@@ -205,15 +215,24 @@ const CLASS_BADGE: Record<AssetClass, { tintClass: string }> = {
 };
 
 const summaryCards = computed(() =>
-  SUMMARY_CLASSES.map((k) => {
-    const value = byAssetClass.value[k] ?? 0;
+  SUMMARY_GROUPS.map((g) => {
+    const value = g.classes.reduce(
+      (acc, c) => acc + (byAssetClass.value[c] ?? 0),
+      0,
+    );
     return {
-      key: k,
-      label: ASSET_CLASS_LABELS[k] ?? k,
+      key: g.key,
+      label: g.label,
       value,
       share: grandTotal.value > 0 ? value / grandTotal.value : 0,
     };
   }),
+);
+
+// На мобильной сетке в два столбца последняя строка может быть неполной:
+// нижняя граница не нужна её карточкам, а правая — одинокой карточке в строке.
+const mobileLastRowStart = computed(
+  () => Math.floor((summaryCards.value.length - 1) / 2) * 2,
 );
 
 const classFilterLabel = computed(() => {
@@ -274,7 +293,7 @@ function pluralPositions(n: number): string {
   <template v-else>
     <!-- grid-cols arbitrary value намеренно: minmax-шаблон с одной "толстой" колонкой не выражается через стандартную шкалу Tailwind. -->
     <div
-      class="md:sticky md:top-0 z-10 bg-background grid grid-cols-2 lg:grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr] border-b border-border"
+      class="md:sticky md:top-0 z-10 bg-background grid grid-cols-2 lg:grid-cols-[minmax(280px,1.6fr)_1fr_1fr_1fr_1fr_1fr] border-b border-border"
     >
       <div class="px-4 sm:px-6 py-4 sm:py-5 col-span-2 lg:col-span-1 border-b lg:border-b-0 lg:border-r border-border">
         <div class="uppercase text-xs text-muted-foreground tracking-wider mb-1.5">
@@ -296,8 +315,8 @@ function pluralPositions(n: number): string {
         class="px-4 sm:px-6 py-4 sm:py-5"
         :class="[
           i < summaryCards.length - 1 ? 'lg:border-r border-border' : '',
-          i % 2 === 0 ? 'border-r border-border lg:border-r' : '',
-          i < summaryCards.length - 2 ? 'border-b lg:border-b-0' : '',
+          i % 2 === 0 && i !== summaryCards.length - 1 ? 'border-r border-border lg:border-r' : '',
+          i < mobileLastRowStart ? 'border-b lg:border-b-0' : '',
         ]"
       >
         <div class="uppercase text-xs text-muted-foreground tracking-wider mb-1.5">
