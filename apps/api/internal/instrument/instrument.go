@@ -217,7 +217,8 @@ func (s *Service) Rename(ctx context.Context, userID, instrumentID uuid.UUID, na
 }
 
 // DeletePersonal removes a user-owned instrument. Returns ErrHasPositions when
-// positions still reference it (FK ON DELETE RESTRICT raises 23503).
+// positions still reference it. Postgres reports the ON DELETE RESTRICT violation
+// as 23503 up to v16 and as 23001 from v17 on, so both codes mean the same thing.
 func (s *Service) DeletePersonal(ctx context.Context, userID, instrumentID uuid.UUID) error {
 	rows, err := s.q.DeletePersonalInstrument(ctx, storage.DeletePersonalInstrumentParams{
 		ID:     instrumentID,
@@ -225,7 +226,7 @@ func (s *Service) DeletePersonal(ctx context.Context, userID, instrumentID uuid.
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		if errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23001") {
 			return ErrHasPositions
 		}
 		return fmt.Errorf("delete personal instrument: %w", err)
