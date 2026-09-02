@@ -9,7 +9,7 @@ import {
   DropdownMenuItemIndicator,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from "radix-vue";
+} from "reka-ui";
 import { ChevronDown, Check, Layers } from "@lucide/vue";
 import { useGetPortfolio } from "@/api/generated";
 import type { PortfolioPosition } from "@/api/generated/model/portfolioPosition";
@@ -390,8 +390,8 @@ function pluralPositions(n: number): string {
                 <DropdownMenuCheckboxItem
                   v-for="c in availableClasses"
                   :key="c"
-                  :checked="selectedClasses.has(c)"
-                  @update:checked="(v) => toggleClass(c, v)"
+                  :model-value="selectedClasses.has(c)"
+                  @update:model-value="(v) => toggleClass(c, v === true)"
                   @select.prevent
                   class="relative flex items-center gap-2 pl-6 pr-2 py-1 rounded-sm cursor-pointer outline-none data-[highlighted]:bg-soft"
                 >
@@ -437,8 +437,8 @@ function pluralPositions(n: number): string {
                 <DropdownMenuCheckboxItem
                   v-for="a in availableAccounts"
                   :key="a.id"
-                  :checked="selectedAccounts.has(a.id)"
-                  @update:checked="(v) => toggleAccount(a.id, v)"
+                  :model-value="selectedAccounts.has(a.id)"
+                  @update:model-value="(v) => toggleAccount(a.id, v === true)"
                   @select.prevent
                   class="relative flex items-center gap-2 pl-6 pr-2 py-1 rounded-sm cursor-pointer outline-none data-[highlighted]:bg-soft"
                 >

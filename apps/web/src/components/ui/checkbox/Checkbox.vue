@@ -3,11 +3,11 @@ import {
   CheckboxRoot,
   CheckboxIndicator,
   type CheckboxRootProps,
-} from "radix-vue";
+} from "reka-ui";
 import { Check } from "@lucide/vue";
 import { cn } from "@/lib/utils";
 
-interface Props extends CheckboxRootProps {
+interface Props extends Omit<CheckboxRootProps, "modelValue"> {
   modelValue?: boolean;
   class?: string;
 }
@@ -21,7 +21,7 @@ const emit = defineEmits<{
 <template>
   <CheckboxRoot
     :id="props.id"
-    :checked="props.modelValue ?? props.checked"
+    :model-value="props.modelValue"
     :disabled="props.disabled"
     :required="props.required"
     :name="props.name"
@@ -32,7 +32,7 @@ const emit = defineEmits<{
         props.class,
       )
     "
-    @update:checked="emit('update:modelValue', $event)"
+    @update:model-value="emit('update:modelValue', $event === true)"
   >
     <CheckboxIndicator class="flex h-full w-full items-center justify-center text-current">
       <Check class="h-3 w-3" :stroke-width="3" />
