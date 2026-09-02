@@ -12,7 +12,7 @@ import {
   CandlestickChart,
   Building2,
   Settings,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 
 const route = useRoute();
 const auth = useAuthStore();

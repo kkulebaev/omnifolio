@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/formatters";
 import { confirm } from "@/lib/confirm";
-import { Trash2, Plus, ChevronDown } from "lucide-vue-next";
+import { Trash2, Plus, ChevronDown } from "@lucide/vue";
 import CreateDepositDialog from "../components/CreateDepositDialog.vue";
 
 const list = useListDeposits();

@@ -20,7 +20,7 @@ import {
 import { ASSET_CLASS_LABELS } from "@/lib/assetClass";
 import { formatNumber, formatRelative } from "@/lib/formatters";
 import { confirm } from "@/lib/confirm";
-import { Plus, Pencil, CircleDollarSign, Trash2 } from "lucide-vue-next";
+import { Plus, Pencil, CircleDollarSign, Trash2 } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import AssetFormDialog from "../components/AssetFormDialog.vue";
 import AssetPriceEditDialog from "../components/AssetPriceEditDialog.vue";

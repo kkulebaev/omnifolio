@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "radix-vue";
-import { ChevronDown, Check, Layers } from "lucide-vue-next";
+import { ChevronDown, Check, Layers } from "@lucide/vue";
 import { useGetPortfolio } from "@/api/generated";
 import type { PortfolioPosition } from "@/api/generated/model/portfolioPosition";
 import { useUiStore } from "@/stores/ui";
