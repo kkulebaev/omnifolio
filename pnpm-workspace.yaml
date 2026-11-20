@@ -1,2 +1,9 @@
 packages:
   - "apps/web"
+
+# Matches pnpm 10 behavior where these scripts were silently skipped;
+# esbuild ships prebuilt binaries via optional deps, so nothing is lost.
+allowBuilds:
+  esbuild: false
+  maplibre-gl: false
+  vue-demi: false
