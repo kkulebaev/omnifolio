@@ -46,8 +46,7 @@ seed-reset: ## Wipe dev seed data for the bootstrap user
 	$(COMPOSE) exec -T postgres psql -U omnifolio -d omnifolio -v ON_ERROR_STOP=1 -c "\
 		DELETE FROM accounts WHERE user_id = (SELECT id FROM users WHERE email = 'dev@local.test'); \
 		DELETE FROM portfolio_snapshots WHERE user_id = (SELECT id FROM users WHERE email = 'dev@local.test'); \
-		DELETE FROM deposits WHERE user_id = (SELECT id FROM users WHERE email = 'dev@local.test'); \
-		DELETE FROM instruments WHERE ticker IN ('SBER','LKOH','AAPL','BTC','ETH','USD');"
+		DELETE FROM deposits WHERE user_id = (SELECT id FROM users WHERE email = 'dev@local.test');"
 
 generate: ## Regenerate sqlc + oapi-codegen + orval clients
 	$(COMPOSE) run --rm --no-deps api sh -c "sqlc generate && cd internal/server/oapi && go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.2 --config=config.yaml /workspace/api/openapi.yaml"
