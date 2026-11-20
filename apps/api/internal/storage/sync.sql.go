@@ -13,6 +13,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const countAccountPositions = `-- name: CountAccountPositions :one
+SELECT COUNT(*) FROM positions WHERE account_id = $1
+`
+
+func (q *Queries) CountAccountPositions(ctx context.Context, accountID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAccountPositions, accountID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteOrphanPositions = `-- name: DeleteOrphanPositions :exec
 DELETE FROM positions
 WHERE account_id = $1
@@ -221,14 +232,16 @@ const upsertInstrumentBySeed = `-- name: UpsertInstrumentBySeed :one
 WITH ins AS (
     INSERT INTO instruments (id, ticker, asset_class, currency, name)
     VALUES ($1, $2, $3, $4, $5)
-    ON CONFLICT (LOWER(ticker), asset_class) DO NOTHING
+    -- The predicate must match the partial global index from 0008, otherwise
+    -- Postgres cannot infer an arbiter index and rejects the statement (42P10).
+    ON CONFLICT (LOWER(ticker), asset_class) WHERE user_id IS NULL DO NOTHING
     RETURNING id, ticker, asset_class, currency, name, created_at, updated_at
 )
 SELECT id, ticker, asset_class, currency, name, created_at, updated_at FROM ins
 UNION ALL
 SELECT id, ticker, asset_class, currency, name, created_at, updated_at
 FROM instruments
-WHERE LOWER(ticker) = LOWER($2) AND asset_class = $3
+WHERE LOWER(ticker) = LOWER($2) AND asset_class = $3 AND user_id IS NULL
   AND NOT EXISTS (SELECT 1 FROM ins)
 `
 

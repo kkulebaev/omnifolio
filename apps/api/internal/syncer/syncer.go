@@ -40,6 +40,10 @@ func extractSubAccountID(sourceType string, creds []byte) (string, error) {
 	return "", nil
 }
 
+// ErrEmptySnapshot rejects a sync that would delete all of an account's
+// positions. A genuinely emptied account has to be cleared by the user.
+var ErrEmptySnapshot = errors.New("Брокер вернул пустой портфель — позиции оставлены как есть. Если всё продано, удалите позиции вручную.")
+
 type Service struct {
 	pool     *pgxpool.Pool
 	q        *storage.Queries
@@ -92,6 +96,9 @@ func (s *Service) Sync(ctx context.Context, accountID uuid.UUID) error {
 	}
 
 	if err := s.applyPositions(ctx, accountID, resolved); err != nil {
+		if errors.Is(err, ErrEmptySnapshot) {
+			return s.markFailed(ctx, accountID, err)
+		}
 		return s.markFailed(ctx, accountID, fmt.Errorf("apply positions: %w", err))
 	}
 
@@ -232,6 +239,19 @@ func (s *Service) applyPositions(ctx context.Context, accountID uuid.UUID, resol
 	}
 	if !locked {
 		return errors.New("syncer: account already syncing")
+	}
+
+	// Brokers occasionally answer with an empty portfolio during outages
+	// (T-Invest did on 2026-11-20); trusting it would wipe every position via
+	// DeleteOrphanPositions and the next successful sync could not tell.
+	if len(resolved) == 0 {
+		existing, err := qtx.CountAccountPositions(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("count positions: %w", err)
+		}
+		if existing > 0 {
+			return ErrEmptySnapshot
+		}
 	}
 
 	keep := make([]uuid.UUID, 0, len(resolved))
