@@ -8,6 +8,8 @@
 import type { PortfolioSnapshot } from './portfolioSnapshot';
 
 export interface PortfolioHistory {
+  /** Some flows have no FX rate at all and are left out of `netInvested` */
+  netInvestedPartial: boolean;
   /** User's `display_currency` right now (may differ from per-snapshot value) */
   currentDisplayCurrency: string;
   points: PortfolioSnapshot[];

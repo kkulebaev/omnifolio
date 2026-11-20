@@ -15,6 +15,7 @@ import { useGetPortfolio } from "@/api/generated";
 import type { PortfolioPosition } from "@/api/generated/model/portfolioPosition";
 import { useUiStore } from "@/stores/ui";
 import PortfolioHistoryChart from "@/features/dashboard/components/PortfolioHistoryChart.vue";
+import ReturnsCard from "@/features/dashboard/components/ReturnsCard.vue";
 import {
   formatCompact,
   formatCurrency,
@@ -338,6 +339,8 @@ function pluralPositions(n: number): string {
         </div>
       </div>
     </div>
+
+    <ReturnsCard />
 
     <PortfolioHistoryChart />
 

@@ -14,33 +14,39 @@ import (
 )
 
 const createDeposit = `-- name: CreateDeposit :one
-INSERT INTO deposits (id, user_id, month, amount)
-VALUES ($1, $2, date_trunc('month', $3::date)::date, $4)
-RETURNING id, user_id, month, amount, created_at, updated_at
+INSERT INTO deposits (id, user_id, date, kind, currency, amount)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, user_id, date, amount, created_at, updated_at, kind, currency
 `
 
 type CreateDepositParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
-	Month  pgtype.Date
-	Amount decimal.Decimal
+	ID       uuid.UUID
+	UserID   uuid.UUID
+	Date     pgtype.Date
+	Kind     string
+	Currency string
+	Amount   decimal.Decimal
 }
 
 func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error) {
 	row := q.db.QueryRow(ctx, createDeposit,
 		arg.ID,
 		arg.UserID,
-		arg.Month,
+		arg.Date,
+		arg.Kind,
+		arg.Currency,
 		arg.Amount,
 	)
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Month,
+		&i.Date,
 		&i.Amount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Kind,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -64,10 +70,10 @@ func (q *Queries) DeleteDeposit(ctx context.Context, arg DeleteDepositParams) (i
 }
 
 const listDepositsByUser = `-- name: ListDepositsByUser :many
-SELECT id, user_id, month, amount, created_at, updated_at
+SELECT id, user_id, date, amount, created_at, updated_at, kind, currency
 FROM deposits
 WHERE user_id = $1
-ORDER BY month DESC, created_at DESC
+ORDER BY date DESC, created_at DESC
 `
 
 func (q *Queries) ListDepositsByUser(ctx context.Context, userID uuid.UUID) ([]Deposit, error) {
@@ -82,10 +88,12 @@ func (q *Queries) ListDepositsByUser(ctx context.Context, userID uuid.UUID) ([]D
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.Month,
+			&i.Date,
 			&i.Amount,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Kind,
+			&i.Currency,
 		); err != nil {
 			return nil, err
 		}
@@ -95,4 +103,43 @@ func (q *Queries) ListDepositsByUser(ctx context.Context, userID uuid.UUID) ([]D
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateDeposit = `-- name: UpdateDeposit :one
+UPDATE deposits
+SET date = $1, kind = $2, currency = $3, amount = $4
+WHERE id = $5 AND user_id = $6
+RETURNING id, user_id, date, amount, created_at, updated_at, kind, currency
+`
+
+type UpdateDepositParams struct {
+	Date     pgtype.Date
+	Kind     string
+	Currency string
+	Amount   decimal.Decimal
+	ID       uuid.UUID
+	UserID   uuid.UUID
+}
+
+func (q *Queries) UpdateDeposit(ctx context.Context, arg UpdateDepositParams) (Deposit, error) {
+	row := q.db.QueryRow(ctx, updateDeposit,
+		arg.Date,
+		arg.Kind,
+		arg.Currency,
+		arg.Amount,
+		arg.ID,
+		arg.UserID,
+	)
+	var i Deposit
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Date,
+		&i.Amount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.Currency,
+	)
+	return i, err
 }

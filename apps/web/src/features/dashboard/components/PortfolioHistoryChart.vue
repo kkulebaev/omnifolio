@@ -9,7 +9,7 @@ import {
   VisArea,
 } from "@unovis/vue";
 import { useGetPortfolioHistory } from "@/api/generated";
-import { formatCompact, formatDate } from "@/lib/formatters";
+import { formatCompact, formatDay } from "@/lib/formatters";
 
 function niceTicks(min: number, max: number, count: number): number[] {
   if (
@@ -37,9 +37,12 @@ function niceTicks(min: number, max: number, count: number): number[] {
   return ticks;
 }
 
+// Ticks are UTC-midnight timestamps of snapshot dates; formatting them in local
+// time would show the previous day west of Greenwich.
 const xTickFmt = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
   month: "short",
+  timeZone: "UTC",
 });
 
 function formatXTick(ts: number): string {
@@ -66,6 +69,7 @@ type Preset = "7d" | "30d" | "90d" | "1y" | "all";
 type Point = {
   ts: number;
   total: number;
+  netInvested: number;
   date: string;
   displayCurrency: string;
 };
@@ -110,7 +114,7 @@ const params = computed(() => rangeFor(preset.value));
 const history = useGetPortfolioHistory(params, {
   query: {
     queryKey: computed(
-      () => ["portfolio-history", preset.value] as const,
+      () => ["portfolio", "history", preset.value] as const,
     ),
   },
 });
@@ -120,10 +124,17 @@ const points = computed<Point[]>(() => {
   return raw.map((p) => ({
     ts: Date.parse(p.date),
     total: Number(p.grandTotal),
+    netInvested: Number(p.netInvested),
     date: p.date,
     displayCurrency: p.displayCurrency,
   }));
 });
+
+// Without any recorded flows the line sits at zero and would only squash the
+// value line by dragging the y-domain down to 0.
+const showInvested = computed(() =>
+  points.value.some((p) => p.netInvested !== 0),
+);
 
 const isEmpty = computed(
   () => !history.isLoading.value && points.value.length === 0,
@@ -135,8 +146,11 @@ const yDomain = computed<[number, number] | undefined>(() => {
   let min = Infinity;
   let max = -Infinity;
   for (const p of pts) {
-    if (p.total < min) min = p.total;
-    if (p.total > max) max = p.total;
+    const values = showInvested.value ? [p.total, p.netInvested] : [p.total];
+    for (const v of values) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return undefined;
   const span = max - min;
@@ -214,12 +228,18 @@ function xLabelStyle(i: number, n: number, ts: number): Record<string, string> {
   return { left: `${pct}%`, transform };
 }
 
+const INVESTED_DASH = [4, 4];
+
 function tooltipTemplate(d: Point): string {
   const value = formatCompact(d.total, d.displayCurrency);
-  const dateLabel = formatDate(d.date);
+  const dateLabel = formatDay(d.date);
+  const invested = showInvested.value
+    ? `<div style="color:var(--color-muted-foreground)">Вложено: ${formatCompact(d.netInvested, d.displayCurrency)}</div>`
+    : "";
   return `<div style="font-size:11px;line-height:1.4">
     <div style="color:var(--color-muted-foreground)">${dateLabel}</div>
-    <div style="font-weight:600">${value}</div>
+    <div style="font-weight:600">Стоимость: ${value}</div>
+    ${invested}
   </div>`;
 }
 </script>
@@ -229,6 +249,12 @@ function tooltipTemplate(d: Point): string {
     <div class="flex items-center justify-between mb-2.5 gap-2 flex-wrap">
       <h2 class="text-xs font-semibold m-0">
         Динамика стоимости
+        <span
+          v-if="showInvested"
+          class="text-muted-foreground font-normal ml-1.5"
+        >
+          · пунктир — вложено
+        </span>
         <span
           v-if="
             history.data.value &&
@@ -303,6 +329,14 @@ function tooltipTemplate(d: Point): string {
             :y="(d: Point) => d.total"
             color="var(--color-accent)"
           />
+          <VisLine
+            v-if="showInvested"
+            :x="(d: Point) => d.ts"
+            :y="(d: Point) => d.netInvested"
+            color="var(--color-muted-foreground)"
+            :line-dash-array="INVESTED_DASH"
+            :line-width="1"
+          />
           <VisAxis
             type="x"
             :tick-values="xGridTicks"
@@ -366,6 +400,14 @@ function tooltipTemplate(d: Point): string {
             :y="(d: Point) => d.total"
             color="var(--color-accent)"
           />
+          <VisLine
+            v-if="showInvested"
+            :x="(d: Point) => d.ts"
+            :y="(d: Point) => d.netInvested"
+            color="var(--color-muted-foreground)"
+            :line-dash-array="INVESTED_DASH"
+            :line-width="1"
+          />
           <VisAxis
             type="x"
             :tick-values="xGridTicks"
@@ -407,5 +449,11 @@ function tooltipTemplate(d: Point): string {
         </div>
       </div>
     </div>
+    <p
+      v-if="history.data.value?.netInvestedPartial && showInvested"
+      class="text-xs text-muted-foreground mt-1.5 mb-0"
+    >
+      * Линия «вложено» неполная: часть потоков без курса ЦБ.
+    </p>
   </section>
 </template>

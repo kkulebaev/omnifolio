@@ -36,13 +36,14 @@ import type {
   AccountList,
   ConflictResponse,
   CreateAccountRequest,
-  CreateDepositRequest,
   CreatePersonalInstrumentRequest,
   CreatePositionRequest,
   Deposit,
+  DepositInput,
   DepositList,
   GetPortfolioHistoryParams,
   GetPortfolioParams,
+  GetPortfolioReturnsParams,
   Health,
   Instrument,
   InstrumentList,
@@ -51,6 +52,7 @@ import type {
   NotFoundResponse,
   Portfolio,
   PortfolioHistory,
+  PortfolioReturns,
   Position,
   SearchInstrumentsParams,
   SetInstrumentPriceRequest,
@@ -1786,6 +1788,99 @@ export function useGetPortfolioHistory<TData = Awaited<ReturnType<typeof getPort
 
 
 
+export const getGetPortfolioReturnsUrl = (params?: GetPortfolioReturnsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portfolio/returns?${stringifiedParams}` : `/portfolio/returns`
+}
+
+/**
+ * Cash flows from /deposits are converted into `currency` at the CBR rate
+ * on the flow date (nearest later rate when none exists on or before it).
+ * Snapshot values for TWR are recomputed from their native `byCurrency`
+ * sums at the rate on the snapshot date.
+ * @summary Portfolio returns (invested, P&L, XIRR, TWR)
+ */
+export const getPortfolioReturns = async (params?: GetPortfolioReturnsParams, options?: Parameters<typeof fetcher>[1]): Promise<PortfolioReturns> => {
+
+  return fetcher<PortfolioReturns>(getGetPortfolioReturnsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortfolioReturnsQueryKey = (params?: MaybeRefOrGetter<GetPortfolioReturnsParams>,) => {
+    return [
+    'portfolio','returns', ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPortfolioReturnsQueryOptions = <TData = Awaited<ReturnType<typeof getPortfolioReturns>>, TError = UnauthorizedResponse | ValidationErrorResponse>(params?: MaybeRefOrGetter<GetPortfolioReturnsParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortfolioReturns>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  getGetPortfolioReturnsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortfolioReturns>>> = ({ signal }) => getPortfolioReturns(toValue(params), { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioReturns>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetPortfolioReturnsQueryResult = NonNullable<Awaited<ReturnType<typeof getPortfolioReturns>>>
+export type GetPortfolioReturnsQueryError = UnauthorizedResponse | ValidationErrorResponse
+
+
+/**
+ * Cash flows from /deposits are converted into `currency` at the CBR rate
+ * on the flow date (nearest later rate when none exists on or before it).
+ * Snapshot values for TWR are recomputed from their native `byCurrency`
+ * sums at the rate on the snapshot date.
+ * @summary Portfolio returns (invested, P&L, XIRR, TWR)
+ */
+export function useGetPortfolioReturns<TData = Awaited<ReturnType<typeof getPortfolioReturns>>, TError = UnauthorizedResponse | ValidationErrorResponse>(
+ params?: MaybeRefOrGetter<GetPortfolioReturnsParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortfolioReturns>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient
+ ): UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetPortfolioReturnsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioReturns>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
+
+  return query;
+}
+
+
+
+
+
+
+
 export const getListDepositsUrl = () => {
 
 
@@ -1795,7 +1890,7 @@ export const getListDepositsUrl = () => {
 }
 
 /**
- * @summary List user deposits
+ * @summary List user deposits and withdrawals
  */
 export const listDeposits = async ( options?: Parameters<typeof fetcher>[1]): Promise<DepositList> => {
 
@@ -1841,7 +1936,7 @@ export type ListDepositsQueryResult = NonNullable<Awaited<ReturnType<typeof list
 export type ListDepositsQueryError = UnauthorizedResponse
 
 
-/** @summary List user deposits */
+/** @summary List user deposits and withdrawals */
 export function useListDeposits<TData = Awaited<ReturnType<typeof listDeposits>>, TError = UnauthorizedResponse>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -1871,16 +1966,16 @@ export const getCreateDepositUrl = () => {
 }
 
 /**
- * @summary Create a deposit
+ * @summary Create a deposit or withdrawal
  */
-export const createDeposit = async (createDepositRequest: CreateDepositRequest, options?: Parameters<typeof fetcher>[1]): Promise<Deposit> => {
+export const createDeposit = async (depositInput: DepositInput, options?: Parameters<typeof fetcher>[1]): Promise<Deposit> => {
 
   return fetcher<Deposit>(getCreateDepositUrl(),
   {
     ...options,
     method: 'POST',
     headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
-    body: JSON.stringify(createDepositRequest)
+    body: JSON.stringify(depositInput)
   }
 );}
 
@@ -1918,11 +2013,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CreateDepositMutationResult = NonNullable<Awaited<ReturnType<typeof createDeposit>>>
-    export type CreateDepositMutationBody = CreateDepositRequest
+    export type CreateDepositMutationBody = DepositInput
     export type CreateDepositMutationError = UnauthorizedResponse | ValidationErrorResponse
-    export type CreateDepositMutationVariables = {data: CreateDepositRequest}
+    export type CreateDepositMutationVariables = {data: DepositInput}
 
-    /** @summary Create a deposit */
+    /** @summary Create a deposit or withdrawal */
 export const useCreateDeposit = <TError = UnauthorizedResponse | ValidationErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,CreateDepositMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -1932,6 +2027,79 @@ export const useCreateDeposit = <TError = UnauthorizedResponse | ValidationError
         TContext
       > => {
       return useMutation(getCreateDepositMutationOptions(options), queryClient);
+    }
+
+export const getUpdateDepositUrl = (depositId: string,) => {
+
+
+
+
+  return `/deposits/${depositId}`
+}
+
+/**
+ * @summary Update a deposit or withdrawal
+ */
+export const updateDeposit = async (depositId: string,
+    depositInput: DepositInput, options?: Parameters<typeof fetcher>[1]): Promise<Deposit> => {
+
+  return fetcher<Deposit>(getUpdateDepositUrl(depositId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
+    body: JSON.stringify(depositInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateDepositMutationKey = () => ['updateDeposit'] as const;
+
+export const getUpdateDepositMutationOptions = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDeposit>>, TError,UpdateDepositMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateDeposit>>, TError,UpdateDepositMutationVariables, TContext> => {
+
+const mutationKey = getUpdateDepositMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateDeposit>>, UpdateDepositMutationVariables> = (props) => {
+          const {depositId,data} = props ?? {};
+
+          return  updateDeposit(depositId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateDepositMutationResult = NonNullable<Awaited<ReturnType<typeof updateDeposit>>>
+    export type UpdateDepositMutationBody = DepositInput
+    export type UpdateDepositMutationError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse
+    export type UpdateDepositMutationVariables = {depositId: string;data: DepositInput}
+
+    /** @summary Update a deposit or withdrawal */
+export const useUpdateDeposit = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDeposit>>, TError,UpdateDepositMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof updateDeposit>>,
+        TError,
+        UpdateDepositMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateDepositMutationOptions(options), queryClient);
     }
 
 export const getDeleteDepositUrl = (depositId: string,) => {

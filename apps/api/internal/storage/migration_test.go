@@ -93,6 +93,78 @@ func TestMigration_RoundTrip_0008(t *testing.T) {
 	}
 }
 
+// TestMigration_0009_MigratesDeposits seeds a pre-0009 deposit, applies 0009
+// and checks the row was carried over (month → date, default kind/currency),
+// then exercises the new columns and rolls 0009 back and forth.
+func TestMigration_0009_MigratesDeposits(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedDB(t)
+
+	if err := goose.DownToContext(ctx, db, "migrations", 8); err != nil {
+		t.Fatalf("goose down to 8: %v", err)
+	}
+
+	userID := uuid.Must(uuid.NewV7())
+	depID := uuid.Must(uuid.NewV7())
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO users (id, email, password_hash) VALUES ($1, $2, 'hash')`,
+		userID, fmt.Sprintf("%s@test.local", userID),
+	); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO deposits (id, user_id, month, amount) VALUES ($1, $2, '2025-03-01', 50000)`,
+		depID, userID,
+	); err != nil {
+		t.Fatalf("insert legacy deposit: %v", err)
+	}
+
+	if err := goose.UpContext(ctx, db, "migrations"); err != nil {
+		t.Fatalf("goose up: %v", err)
+	}
+
+	var date, kind, currency, amount string
+	if err := db.QueryRowContext(ctx,
+		`SELECT date::text, kind, currency, amount::text FROM deposits WHERE id = $1`, depID,
+	).Scan(&date, &kind, &currency, &amount); err != nil {
+		t.Fatalf("select migrated deposit: %v", err)
+	}
+	if date != "2025-03-01" || kind != "deposit" || currency != "RUB" || amount != "50000.00" {
+		t.Errorf("migrated row = (%s, %s, %s, %s), want (2025-03-01, deposit, RUB, 50000.00)", date, kind, currency, amount)
+	}
+
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO deposits (id, user_id, date, kind, currency, amount)
+		 VALUES ($1, $2, '2025-04-17', 'withdrawal', 'USD', 12.34)`,
+		uuid.Must(uuid.NewV7()), userID,
+	); err != nil {
+		t.Fatalf("insert withdrawal with cents: %v", err)
+	}
+	for _, bad := range []string{
+		`INSERT INTO deposits (id, user_id, date, kind, amount) VALUES ($1, $2, '2025-04-17', 'refund', 1)`,
+		`INSERT INTO deposits (id, user_id, date, currency, amount) VALUES ($1, $2, '2025-04-17', 'usd', 1)`,
+		`INSERT INTO deposits (id, user_id, date, amount) VALUES ($1, $2, '2025-04-17', 0)`,
+	} {
+		if _, err := db.ExecContext(ctx, bad, uuid.Must(uuid.NewV7()), userID); err == nil {
+			t.Errorf("expected CHECK violation for %q", bad)
+		}
+	}
+
+	if err := goose.DownToContext(ctx, db, "migrations", 8); err != nil {
+		t.Fatalf("goose down to 8 with new data: %v", err)
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM deposits`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("after down: %d deposits, want 1 (withdrawal dropped)", n)
+	}
+	if err := goose.UpContext(ctx, db, "migrations"); err != nil {
+		t.Fatalf("goose up again: %v", err)
+	}
+}
+
 // TestMigration_InvariantImmutability_Forward verifies that making a personal
 // (user-owned) real_estate row global (user_id = NULL) violates the
 // instruments_scope_class_check constraint.

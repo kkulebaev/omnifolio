@@ -131,6 +131,24 @@ func (e CreatePersonalInstrumentRequestAssetClass) Valid() bool {
 	}
 }
 
+// Defines values for DepositKind.
+const (
+	DepositKindDeposit    DepositKind = "deposit"
+	DepositKindWithdrawal DepositKind = "withdrawal"
+)
+
+// Valid indicates whether the value is a known member of the DepositKind enum.
+func (e DepositKind) Valid() bool {
+	switch e {
+	case DepositKindDeposit:
+		return true
+	case DepositKindWithdrawal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InstrumentScope.
 const (
 	InstrumentScopeGlobal   InstrumentScope = "global"
@@ -143,6 +161,36 @@ func (e InstrumentScope) Valid() bool {
 	case InstrumentScopeGlobal:
 		return true
 	case InstrumentScopePersonal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReturnsUnavailableReason.
+const (
+	InsufficientHistory ReturnsUnavailableReason = "insufficient_history"
+	NoConvergence       ReturnsUnavailableReason = "no_convergence"
+	NoFlows             ReturnsUnavailableReason = "no_flows"
+	NoMeasurablePeriod  ReturnsUnavailableReason = "no_measurable_period"
+	NoSignChange        ReturnsUnavailableReason = "no_sign_change"
+	NoSnapshots         ReturnsUnavailableReason = "no_snapshots"
+)
+
+// Valid indicates whether the value is a known member of the ReturnsUnavailableReason enum.
+func (e ReturnsUnavailableReason) Valid() bool {
+	switch e {
+	case InsufficientHistory:
+		return true
+	case NoConvergence:
+		return true
+	case NoFlows:
+		return true
+	case NoMeasurablePeriod:
+		return true
+	case NoSignChange:
+		return true
+	case NoSnapshots:
 		return true
 	default:
 		return false
@@ -246,15 +294,6 @@ type CreateAccountRequest struct {
 	Type  AccountType `json:"type"`
 }
 
-// CreateDepositRequest defines model for CreateDepositRequest.
-type CreateDepositRequest struct {
-	// Amount Whole positive rubles
-	Amount string `json:"amount"`
-
-	// Month Any date; the day is normalized to the first of the month server-side
-	Month openapi_types.Date `json:"month"`
-}
-
 // CreatePersonalInstrumentRequest defines model for CreatePersonalInstrumentRequest.
 type CreatePersonalInstrumentRequest struct {
 	// AssetClass Personal-only asset classes. Exchange/cash classes are rejected.
@@ -286,14 +325,29 @@ type CreatePositionRequest struct {
 
 // Deposit defines model for Deposit.
 type Deposit struct {
-	// Amount Whole rubles, no decimals
+	// Amount Positive decimal with up to 2 fraction digits; direction is in `kind`
 	Amount    string             `json:"amount"`
 	CreatedAt time.Time          `json:"createdAt"`
+	Currency  string             `json:"currency"`
+	Date      openapi_types.Date `json:"date"`
 	Id        openapi_types.UUID `json:"id"`
-
-	// Month Always the first day of the month, e.g. 2026-05-01
-	Month openapi_types.Date `json:"month"`
+	Kind      DepositKind        `json:"kind"`
+	UpdatedAt time.Time          `json:"updatedAt"`
 }
+
+// DepositInput defines model for DepositInput.
+type DepositInput struct {
+	// Amount Positive decimal, up to 2 fraction digits (positivity is checked server-side)
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+
+	// Date Flow date; at most one day in the future
+	Date openapi_types.Date `json:"date"`
+	Kind DepositKind        `json:"kind"`
+}
+
+// DepositKind defines model for DepositKind.
+type DepositKind string
 
 // DepositList defines model for DepositList.
 type DepositList struct {
@@ -360,8 +414,11 @@ type Portfolio struct {
 // PortfolioHistory defines model for PortfolioHistory.
 type PortfolioHistory struct {
 	// CurrentDisplayCurrency User's `display_currency` right now (may differ from per-snapshot value)
-	CurrentDisplayCurrency string              `json:"currentDisplayCurrency"`
-	Points                 []PortfolioSnapshot `json:"points"`
+	CurrentDisplayCurrency string `json:"currentDisplayCurrency"`
+
+	// NetInvestedPartial Some flows have no FX rate at all and are left out of `netInvested`
+	NetInvestedPartial bool                `json:"netInvestedPartial"`
+	Points             []PortfolioSnapshot `json:"points"`
 }
 
 // PortfolioPosition defines model for PortfolioPosition.
@@ -378,6 +435,57 @@ type PortfolioPosition struct {
 	Ticker         string             `json:"ticker"`
 	ValueDisplay   *string            `json:"valueDisplay"`
 	ValueNative    *string            `json:"valueNative,omitempty"`
+}
+
+// PortfolioReturns defines model for PortfolioReturns.
+type PortfolioReturns struct {
+	Currency string `json:"currency"`
+
+	// CurrentValue Current portfolio grand total in `currency`
+	CurrentValue  string              `json:"currentValue"`
+	FirstFlowDate *openapi_types.Date `json:"firstFlowDate"`
+
+	// FxApproximated At least one flow or snapshot was converted at the nearest later
+	// rate because no rate existed on or before its date.
+	FxApproximated bool `json:"fxApproximated"`
+
+	// NetInvested totalDeposited − totalWithdrawn
+	NetInvested string `json:"netInvested"`
+
+	// Profit currentValue − netInvested
+	Profit string `json:"profit"`
+
+	// ProfitPct profit / netInvested as a fraction; null when netInvested ≤ 0
+	ProfitPct *string `json:"profitPct"`
+
+	// TotalDeposited Sum of deposits, each converted at the rate on its date
+	TotalDeposited string `json:"totalDeposited"`
+
+	// TotalWithdrawn Sum of withdrawals, each converted at the rate on its date
+	TotalWithdrawn string `json:"totalWithdrawn"`
+
+	// Twr Cumulative time-weighted return over twrFrom..today as a fraction.
+	// Sub-periods run between snapshots plus a final live valuation; a
+	// flow dated d counts in the sub-period ending at the first point
+	// dated strictly after d (the live point absorbs the rest).
+	Twr *string `json:"twr"`
+
+	// TwrAnnualized Annualized TWR; only when the TWR period is at least 365 days
+	TwrAnnualized *string `json:"twrAnnualized"`
+
+	// TwrFrom First snapshot date the TWR is measured from
+	TwrFrom *openapi_types.Date `json:"twrFrom"`
+
+	// TwrReason Why twr is null; null when twr is present
+	TwrReason *ReturnsUnavailableReason `json:"twrReason"`
+
+	// Xirr Annualized money-weighted return as a fraction (0.123 = 12.3%).
+	// Null when there is no sign change in flows, the solver did not
+	// converge, or the first flow is less than 30 days old.
+	Xirr *string `json:"xirr"`
+
+	// XirrReason Why xirr is null; null when xirr is present
+	XirrReason *ReturnsUnavailableReason `json:"xirrReason"`
 }
 
 // PortfolioSnapshot defines model for PortfolioSnapshot.
@@ -397,6 +505,12 @@ type PortfolioSnapshot struct {
 
 	// GrandTotal Total in `displayCurrency` of this snapshot
 	GrandTotal string `json:"grandTotal"`
+
+	// NetInvested Cumulative deposits minus withdrawals dated strictly before `date`
+	// (a snapshot is taken before same-day flows are reflected), in
+	// `displayCurrency` of this snapshot; each flow is converted at the
+	// rate on its own date.
+	NetInvested string `json:"netInvested"`
 }
 
 // PortfolioSummary defines model for PortfolioSummary.
@@ -437,6 +551,9 @@ type Problem struct {
 	// Type Example: /errors/validation
 	Type *string `json:"type,omitempty"`
 }
+
+// ReturnsUnavailableReason defines model for ReturnsUnavailableReason.
+type ReturnsUnavailableReason string
 
 // SetInstrumentPriceRequest defines model for SetInstrumentPriceRequest.
 type SetInstrumentPriceRequest struct {
@@ -551,6 +668,12 @@ type GetPortfolioHistoryParams struct {
 	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// GetPortfolioReturnsParams defines parameters for GetPortfolioReturns.
+type GetPortfolioReturnsParams struct {
+	// Currency Target currency. Defaults to user's preference.
+	Currency *string `form:"currency,omitempty" json:"currency,omitempty"`
+}
+
 // CreateAccountJSONRequestBody defines body for CreateAccount for application/json ContentType.
 type CreateAccountJSONRequestBody = CreateAccountRequest
 
@@ -570,7 +693,10 @@ type UpdatePositionJSONRequestBody = UpdatePositionRequest
 type LoginJSONRequestBody = LoginRequest
 
 // CreateDepositJSONRequestBody defines body for CreateDeposit for application/json ContentType.
-type CreateDepositJSONRequestBody = CreateDepositRequest
+type CreateDepositJSONRequestBody = DepositInput
+
+// UpdateDepositJSONRequestBody defines body for UpdateDeposit for application/json ContentType.
+type UpdateDepositJSONRequestBody = DepositInput
 
 // CreateInstrumentJSONRequestBody defines body for CreateInstrument for application/json ContentType.
 type CreateInstrumentJSONRequestBody = CreatePersonalInstrumentRequest
@@ -622,15 +748,18 @@ type ServerInterface interface {
 	// GetMe Get current user
 	// (GET /auth/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
-	// ListDeposits List user deposits
+	// ListDeposits List user deposits and withdrawals
 	// (GET /deposits)
 	ListDeposits(w http.ResponseWriter, r *http.Request)
-	// CreateDeposit Create a deposit
+	// CreateDeposit Create a deposit or withdrawal
 	// (POST /deposits)
 	CreateDeposit(w http.ResponseWriter, r *http.Request)
 	// DeleteDeposit Delete a deposit
 	// (DELETE /deposits/{depositId})
 	DeleteDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId)
+	// UpdateDeposit Update a deposit or withdrawal
+	// (PUT /deposits/{depositId})
+	UpdateDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId)
 	// GetHealthz Liveness probe
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -658,6 +787,9 @@ type ServerInterface interface {
 	// GetPortfolioHistory Daily portfolio snapshots within a date range
 	// (GET /portfolio/history)
 	GetPortfolioHistory(w http.ResponseWriter, r *http.Request, params GetPortfolioHistoryParams)
+	// GetPortfolioReturns Portfolio returns (invested, P&L, XIRR, TWR)
+	// (GET /portfolio/returns)
+	GetPortfolioReturns(w http.ResponseWriter, r *http.Request, params GetPortfolioReturnsParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -742,13 +874,13 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ListDeposits List user deposits
+// ListDeposits List user deposits and withdrawals
 // (GET /deposits)
 func (_ Unimplemented) ListDeposits(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// CreateDeposit Create a deposit
+// CreateDeposit Create a deposit or withdrawal
 // (POST /deposits)
 func (_ Unimplemented) CreateDeposit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -757,6 +889,12 @@ func (_ Unimplemented) CreateDeposit(w http.ResponseWriter, r *http.Request) {
 // DeleteDeposit Delete a deposit
 // (DELETE /deposits/{depositId})
 func (_ Unimplemented) DeleteDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateDeposit Update a deposit or withdrawal
+// (PUT /deposits/{depositId})
+func (_ Unimplemented) UpdateDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -811,6 +949,12 @@ func (_ Unimplemented) GetPortfolio(w http.ResponseWriter, r *http.Request, para
 // GetPortfolioHistory Daily portfolio snapshots within a date range
 // (GET /portfolio/history)
 func (_ Unimplemented) GetPortfolioHistory(w http.ResponseWriter, r *http.Request, params GetPortfolioHistoryParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetPortfolioReturns Portfolio returns (invested, P&L, XIRR, TWR)
+// (GET /portfolio/returns)
+func (_ Unimplemented) GetPortfolioReturns(w http.ResponseWriter, r *http.Request, params GetPortfolioReturnsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1161,6 +1305,32 @@ func (siw *ServerInterfaceWrapper) DeleteDeposit(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateDeposit operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDeposit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "depositId" -------------
+	var depositId DepositId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "depositId", chi.URLParam(r, "depositId"), &depositId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "depositId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDeposit(w, r, depositId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealthz operation middleware
 func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
 
@@ -1464,6 +1634,39 @@ func (siw *ServerInterfaceWrapper) GetPortfolioHistory(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetPortfolioReturns operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioReturns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPortfolioReturnsParams
+
+	// ------------- Optional query parameter "currency" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "currency", r.URL.Query(), &params.Currency, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "currency"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "currency", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioReturns(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1644,6 +1847,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/portfolio/history", wrapper.GetPortfolioHistory)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/portfolio/returns", wrapper.GetPortfolioReturns)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/deposits", wrapper.ListDeposits)
 	})
 	r.Group(func(r chi.Router) {
@@ -1651,6 +1857,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/deposits/{depositId}", wrapper.DeleteDeposit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/deposits/{depositId}", wrapper.UpdateDeposit)
 	})
 
 	return r
@@ -2515,6 +2724,77 @@ func (response DeleteDeposit404ApplicationProblemPlusJSONResponse) VisitDeleteDe
 	return err
 }
 
+type UpdateDepositRequestObject struct {
+	DepositId DepositId `json:"depositId"`
+	Body      *UpdateDepositJSONRequestBody
+}
+
+type UpdateDepositResponseObject interface {
+	VisitUpdateDepositResponse(w http.ResponseWriter) error
+}
+
+type UpdateDeposit200JSONResponse Deposit
+
+func (response UpdateDeposit200JSONResponse) VisitUpdateDepositResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDeposit401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDeposit401ApplicationProblemPlusJSONResponse) VisitUpdateDepositResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDeposit404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDeposit404ApplicationProblemPlusJSONResponse) VisitUpdateDepositResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDeposit422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateDeposit422ApplicationProblemPlusJSONResponse) VisitUpdateDepositResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthzRequestObject struct {
 }
 
@@ -2990,6 +3270,60 @@ func (response GetPortfolioHistory422ApplicationProblemPlusJSONResponse) VisitGe
 	return err
 }
 
+type GetPortfolioReturnsRequestObject struct {
+	Params GetPortfolioReturnsParams
+}
+
+type GetPortfolioReturnsResponseObject interface {
+	VisitGetPortfolioReturnsResponse(w http.ResponseWriter) error
+}
+
+type GetPortfolioReturns200JSONResponse PortfolioReturns
+
+func (response GetPortfolioReturns200JSONResponse) VisitGetPortfolioReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioReturns401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetPortfolioReturns401ApplicationProblemPlusJSONResponse) VisitGetPortfolioReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioReturns422ApplicationProblemPlusJSONResponse struct {
+	ValidationErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetPortfolioReturns422ApplicationProblemPlusJSONResponse) VisitGetPortfolioReturnsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListAccounts List user accounts
@@ -3031,15 +3365,18 @@ type StrictServerInterface interface {
 	// GetMe Get current user
 	// (GET /auth/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
-	// ListDeposits List user deposits
+	// ListDeposits List user deposits and withdrawals
 	// (GET /deposits)
 	ListDeposits(ctx context.Context, request ListDepositsRequestObject) (ListDepositsResponseObject, error)
-	// CreateDeposit Create a deposit
+	// CreateDeposit Create a deposit or withdrawal
 	// (POST /deposits)
 	CreateDeposit(ctx context.Context, request CreateDepositRequestObject) (CreateDepositResponseObject, error)
 	// DeleteDeposit Delete a deposit
 	// (DELETE /deposits/{depositId})
 	DeleteDeposit(ctx context.Context, request DeleteDepositRequestObject) (DeleteDepositResponseObject, error)
+	// UpdateDeposit Update a deposit or withdrawal
+	// (PUT /deposits/{depositId})
+	UpdateDeposit(ctx context.Context, request UpdateDepositRequestObject) (UpdateDepositResponseObject, error)
 	// GetHealthz Liveness probe
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
@@ -3067,6 +3404,9 @@ type StrictServerInterface interface {
 	// GetPortfolioHistory Daily portfolio snapshots within a date range
 	// (GET /portfolio/history)
 	GetPortfolioHistory(ctx context.Context, request GetPortfolioHistoryRequestObject) (GetPortfolioHistoryResponseObject, error)
+	// GetPortfolioReturns Portfolio returns (invested, P&L, XIRR, TWR)
+	// (GET /portfolio/returns)
+	GetPortfolioReturns(ctx context.Context, request GetPortfolioReturnsRequestObject) (GetPortfolioReturnsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3559,6 +3899,39 @@ func (sh *strictHandler) DeleteDeposit(w http.ResponseWriter, r *http.Request, d
 	}
 }
 
+// UpdateDeposit operation middleware
+func (sh *strictHandler) UpdateDeposit(w http.ResponseWriter, r *http.Request, depositId DepositId) {
+	var request UpdateDepositRequestObject
+
+	request.DepositId = depositId
+
+	var body UpdateDepositJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDeposit(ctx, request.(UpdateDepositRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDeposit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDepositResponseObject); ok {
+		if err := validResponse.VisitUpdateDepositResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealthz operation middleware
 func (sh *strictHandler) GetHealthz(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthzRequestObject
@@ -3810,88 +4183,132 @@ func (sh *strictHandler) GetPortfolioHistory(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// GetPortfolioReturns operation middleware
+func (sh *strictHandler) GetPortfolioReturns(w http.ResponseWriter, r *http.Request, params GetPortfolioReturnsParams) {
+	var request GetPortfolioReturnsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPortfolioReturns(ctx, request.(GetPortfolioReturnsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPortfolioReturns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPortfolioReturnsResponseObject); ok {
+		if err := validResponse.VisitGetPortfolioReturnsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

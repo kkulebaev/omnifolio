@@ -12,6 +12,34 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const getFxRateAt = `-- name: GetFxRateAt :one
+SELECT date, from_ccy, to_ccy, rate
+FROM fx_rates
+WHERE from_ccy = $1 AND to_ccy = $2
+ORDER BY (date > $3::date), ABS(date - $3::date)
+LIMIT 1
+`
+
+type GetFxRateAtParams struct {
+	FromCcy string
+	ToCcy   string
+	At      pgtype.Date
+}
+
+// Prefers the latest rate on or before @at; falls back to the nearest later
+// one so flows older than the stored FX history still convert.
+func (q *Queries) GetFxRateAt(ctx context.Context, arg GetFxRateAtParams) (FxRate, error) {
+	row := q.db.QueryRow(ctx, getFxRateAt, arg.FromCcy, arg.ToCcy, arg.At)
+	var i FxRate
+	err := row.Scan(
+		&i.Date,
+		&i.FromCcy,
+		&i.ToCcy,
+		&i.Rate,
+	)
+	return i, err
+}
+
 const getLatestFxRate = `-- name: GetLatestFxRate :one
 SELECT date, from_ccy, to_ccy, rate
 FROM fx_rates

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
+	"github.com/kkulebaev/omnifolio/api/internal/returns"
 	"github.com/kkulebaev/omnifolio/api/internal/server/oapi"
 	"github.com/kkulebaev/omnifolio/api/internal/source"
 	"github.com/kkulebaev/omnifolio/api/internal/storage"
@@ -719,8 +721,17 @@ func (s *serverImpl) GetPortfolioHistory(ctx context.Context, req oapi.GetPortfo
 		return nil, fmt.Errorf("list snapshots: %w", err)
 	}
 
+	series := make([]returns.SeriesPoint, len(rows))
+	for i, r := range rows {
+		series[i] = returns.SeriesPoint{Date: r.SnapshotDate.Time, Currency: r.DisplayCurrency}
+	}
+	netInvested, partial, err := s.deps.Returns.NetInvestedSeries(ctx, user.ID, series)
+	if err != nil {
+		return nil, fmt.Errorf("net invested series: %w", err)
+	}
+
 	points := make([]oapi.PortfolioSnapshot, 0, len(rows))
-	for _, r := range rows {
+	for i, r := range rows {
 		byAssetClass, err := decodeAmounts(r.ByAssetClass)
 		if err != nil {
 			return nil, fmt.Errorf("decode by_asset_class: %w", err)
@@ -740,12 +751,14 @@ func (s *serverImpl) GetPortfolioHistory(ctx context.Context, req oapi.GetPortfo
 			ByAssetClass:    byAssetClass,
 			ByCurrency:      byCurrency,
 			ByAccount:       byAccount,
+			NetInvested:     netInvested[i].StringFixed(2),
 		})
 	}
 
 	return oapi.GetPortfolioHistory200JSONResponse{
 		CurrentDisplayCurrency: user.DisplayCurrency,
 		Points:                 points,
+		NetInvestedPartial:     partial,
 	}, nil
 }
 
@@ -758,6 +771,73 @@ func decodeAmounts(b []byte) (map[string]string, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (s *serverImpl) GetPortfolioReturns(ctx context.Context, req oapi.GetPortfolioReturnsRequestObject) (oapi.GetPortfolioReturnsResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.GetPortfolioReturns401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+
+	ccy := user.DisplayCurrency
+	if req.Params.Currency != nil && *req.Params.Currency != "" {
+		ccy = *req.Params.Currency
+	}
+
+	r, err := s.deps.Returns.Compute(ctx, user.ID, ccy)
+	if err != nil {
+		var rateErr *returns.RateUnavailableError
+		if errors.As(err, &rateErr) {
+			p := validationProblem("FX rate unavailable", nil).build()
+			detail := rateErr.Error()
+			p.Detail = &detail
+			return oapi.GetPortfolioReturns422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: p}, nil
+		}
+		return nil, err
+	}
+	return oapi.GetPortfolioReturns200JSONResponse(toOapiReturns(r)), nil
+}
+
+func toOapiReturns(r returns.Returns) oapi.PortfolioReturns {
+	ratio := func(d *decimal.Decimal) *string {
+		if d == nil {
+			return nil
+		}
+		s := d.String()
+		return &s
+	}
+	reason := func(r *returns.Reason) *oapi.ReturnsUnavailableReason {
+		if r == nil {
+			return nil
+		}
+		v := oapi.ReturnsUnavailableReason(*r)
+		return &v
+	}
+	date := func(t *time.Time) *openapi_types.Date {
+		if t == nil {
+			return nil
+		}
+		return &openapi_types.Date{Time: *t}
+	}
+	return oapi.PortfolioReturns{
+		Currency:       r.Currency,
+		CurrentValue:   r.CurrentValue.StringFixed(2),
+		TotalDeposited: r.TotalDeposited.StringFixed(2),
+		TotalWithdrawn: r.TotalWithdrawn.StringFixed(2),
+		NetInvested:    r.NetInvested.StringFixed(2),
+		Profit:         r.Profit.StringFixed(2),
+		ProfitPct:      ratio(r.ProfitPct),
+		Xirr:           ratio(r.XIRR),
+		Twr:            ratio(r.TWR),
+		TwrAnnualized:  ratio(r.TWRAnnualized),
+		TwrFrom:        date(r.TWRFrom),
+		FirstFlowDate:  date(r.FirstFlowDate),
+		FxApproximated: r.FXApproximated,
+		XirrReason:     reason(r.XIRRReason),
+		TwrReason:      reason(r.TWRReason),
+	}
 }
 
 // ----- deposits -----
@@ -790,18 +870,45 @@ func (s *serverImpl) CreateDeposit(ctx context.Context, req oapi.CreateDepositRe
 	if req.Body == nil {
 		return createDepositValidationResp("missing body", nil), nil
 	}
-	amt, err := decimal.NewFromString(req.Body.Amount)
-	if err != nil || amt.Sign() <= 0 || !amt.IsInteger() {
-		return createDepositValidationResp("Invalid amount",
-			map[string]string{"amount": "must be a positive integer"}), nil
+	in, fields := parseDepositInput(*req.Body)
+	if fields != nil {
+		return createDepositValidationResp("Invalid deposit", fields), nil
 	}
 
-	d, err := s.deps.Deposits.Create(ctx, user.ID, req.Body.Month.Time, amt)
+	d, err := s.deps.Deposits.Create(ctx, user.ID, in)
 	if err != nil {
 		return nil, err
 	}
 	s.deps.Logger.Info("deposit: created", "user_id", user.ID, "deposit_id", d.ID)
 	return oapi.CreateDeposit201JSONResponse(toOapiDeposit(d)), nil
+}
+
+func (s *serverImpl) UpdateDeposit(ctx context.Context, req oapi.UpdateDepositRequestObject) (oapi.UpdateDepositResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.UpdateDeposit401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return updateDepositValidationResp("missing body", nil), nil
+	}
+	in, fields := parseDepositInput(*req.Body)
+	if fields != nil {
+		return updateDepositValidationResp("Invalid deposit", fields), nil
+	}
+
+	d, err := s.deps.Deposits.Update(ctx, user.ID, req.DepositId, in)
+	if err != nil {
+		if errors.Is(err, deposits.ErrNotFound) {
+			return oapi.UpdateDeposit404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("deposit")),
+			}, nil
+		}
+		return nil, err
+	}
+	s.deps.Logger.Info("deposit: updated", "user_id", user.ID, "deposit_id", d.ID)
+	return oapi.UpdateDeposit200JSONResponse(toOapiDeposit(d)), nil
 }
 
 func (s *serverImpl) DeleteDeposit(ctx context.Context, req oapi.DeleteDepositRequestObject) (oapi.DeleteDepositResponseObject, error) {
@@ -823,12 +930,59 @@ func (s *serverImpl) DeleteDeposit(ctx context.Context, req oapi.DeleteDepositRe
 	return oapi.DeleteDeposit204Response{}, nil
 }
 
+// NUMERIC(20,2) holds at most 18 integer digits; larger values would fail
+// in Postgres with a 500 instead of a validation error.
+var maxDepositAmount = decimal.New(1, 18)
+
+var depositCurrencyRe = regexp.MustCompile(`^[A-Z0-9]{3,10}$`)
+
+// parseDepositInput returns nil fields when the input is valid. The OpenAPI
+// validator already enforces the shape; this re-checks the semantics it
+// cannot express (positivity, the future-date guard).
+func parseDepositInput(body oapi.DepositInput) (deposits.Input, map[string]string) {
+	fields := map[string]string{}
+
+	amt, err := decimal.NewFromString(body.Amount)
+	if err != nil || amt.Sign() <= 0 || !amt.Equal(amt.Round(2)) {
+		fields["amount"] = "must be a positive decimal with at most 2 fraction digits"
+	} else if amt.GreaterThanOrEqual(maxDepositAmount) {
+		fields["amount"] = "must be less than 1e18"
+	}
+	if !depositCurrencyRe.MatchString(body.Currency) {
+		fields["currency"] = "must be 3-10 uppercase letters or digits"
+	}
+	kind := string(body.Kind)
+	if kind != deposits.KindDeposit && kind != deposits.KindWithdrawal {
+		fields["kind"] = "must be deposit or withdrawal"
+	}
+	// One day of slack absorbs timezone skew between the browser and UTC;
+	// anything further ahead is almost certainly a typo in the year.
+	now := time.Now().UTC()
+	latest := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+	if body.Date.Time.After(latest) {
+		fields["date"] = "must not be more than 1 day in the future"
+	}
+
+	if len(fields) > 0 {
+		return deposits.Input{}, fields
+	}
+	return deposits.Input{
+		Date:     body.Date.Time,
+		Kind:     kind,
+		Currency: body.Currency,
+		Amount:   amt,
+	}, nil
+}
+
 func toOapiDeposit(d deposits.Deposit) oapi.Deposit {
 	return oapi.Deposit{
 		Id:        d.ID,
-		Month:     openapi_types.Date{Time: d.Month},
-		Amount:    d.Amount.String(),
+		Date:      openapi_types.Date{Time: d.Date},
+		Kind:      oapi.DepositKind(d.Kind),
+		Currency:  d.Currency,
+		Amount:    d.Amount.StringFixed(2),
 		CreatedAt: d.CreatedAt,
+		UpdatedAt: d.UpdatedAt,
 	}
 }
 
@@ -1023,6 +1177,9 @@ func updatePositionValidationResp(title string, fields map[string]string) oapi.U
 }
 func createDepositValidationResp(title string, fields map[string]string) oapi.CreateDeposit422ApplicationProblemPlusJSONResponse {
 	return oapi.CreateDeposit422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func updateDepositValidationResp(title string, fields map[string]string) oapi.UpdateDeposit422ApplicationProblemPlusJSONResponse {
+	return oapi.UpdateDeposit422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
 }
 func createInstrumentValidationResp(title string, fields map[string]string) oapi.CreateInstrument422ApplicationProblemPlusJSONResponse {
 	return oapi.CreateInstrument422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}

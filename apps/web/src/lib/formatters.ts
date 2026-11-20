@@ -70,6 +70,31 @@ export function formatPercent(part: number, total: number): string {
   }).format(part / total);
 }
 
+// Ratio is a fraction (0.123 → "+12,3 %"); the explicit sign matters for returns.
+export function formatRatio(
+  ratio: string | number | null | undefined,
+  fractionDigits = 1,
+): string {
+  if (ratio == null || ratio === "") return "—";
+  const num = typeof ratio === "string" ? Number(ratio) : ratio;
+  if (!Number.isFinite(num)) return "—";
+  return new Intl.NumberFormat("ru-RU", {
+    style: "percent",
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: fractionDigits,
+    signDisplay: "exceptZero",
+  }).format(num);
+}
+
+// Calendar dates ("YYYY-MM-DD") are built in local time: `new Date(iso)` would
+// parse them as UTC midnight and show the previous day west of Greenwich.
+export function formatDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(
+    new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1),
+  );
+}
+
 export function formatDate(d: Date | string): string {
   const date = typeof d === "string" ? new Date(d) : d;
   return new Intl.DateTimeFormat("ru-RU", {

@@ -527,14 +527,44 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+  /portfolio/returns:
+    get:
+      tags: [portfolio]
+      summary: Portfolio returns (invested, P&L, XIRR, TWR)
+      description: |
+        Cash flows from /deposits are converted into `currency` at the CBR rate
+        on the flow date (nearest later rate when none exists on or before it).
+        Snapshot values for TWR are recomputed from their native `byCurrency`
+        sums at the rate on the snapshot date.
+      operationId: getPortfolioReturns
+      parameters:
+        - name: currency
+          in: query
+          required: false
+          description: Target currency. Defaults to user's preference.
+          schema:
+            type: string
+            pattern: "^[A-Z]{3,5}$"
+      responses:
+        "200":
+          description: Portfolio returns
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioReturns"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /deposits:
     get:
       tags: [deposits]
-      summary: List user deposits
+      summary: List user deposits and withdrawals
       operationId: listDeposits
       responses:
         "200":
-          description: List of deposits ordered by month DESC, createdAt DESC
+          description: List of cash flows ordered by date DESC, createdAt DESC
           content:
             application/json:
               schema:
@@ -543,14 +573,14 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     post:
       tags: [deposits]
-      summary: Create a deposit
+      summary: Create a deposit or withdrawal
       operationId: createDeposit
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateDepositRequest"
+              $ref: "#/components/schemas/DepositInput"
       responses:
         "201":
           description: Created
@@ -566,6 +596,29 @@ paths:
   /deposits/{depositId}:
     parameters:
       - $ref: "#/components/parameters/DepositId"
+    put:
+      tags: [deposits]
+      summary: Update a deposit or withdrawal
+      operationId: updateDeposit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deposit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       tags: [deposits]
       summary: Delete a deposit
@@ -1065,6 +1118,7 @@ components:
           byAssetClass,
           byCurrency,
           byAccount,
+          netInvested,
         ]
       properties:
         date:
@@ -1091,11 +1145,21 @@ components:
           additionalProperties:
             type: string
           description: Sums in `displayCurrency` of this snapshot, keyed by account id
+        netInvested:
+          type: string
+          description: |
+            Cumulative deposits minus withdrawals dated strictly before `date`
+            (a snapshot is taken before same-day flows are reflected), in
+            `displayCurrency` of this snapshot; each flow is converted at the
+            rate on its own date.
 
     PortfolioHistory:
       type: object
-      required: [currentDisplayCurrency, points]
+      required: [currentDisplayCurrency, points, netInvestedPartial]
       properties:
+        netInvestedPartial:
+          type: boolean
+          description: Some flows have no FX rate at all and are left out of `netInvested`
         currentDisplayCurrency:
           type: string
           description: User's `display_currency` right now (may differ from per-snapshot value)
@@ -1104,21 +1168,129 @@ components:
           items:
             $ref: "#/components/schemas/PortfolioSnapshot"
 
+    PortfolioReturns:
+      type: object
+      required:
+        [
+          currency,
+          currentValue,
+          totalDeposited,
+          totalWithdrawn,
+          netInvested,
+          profit,
+          profitPct,
+          xirr,
+          twr,
+          twrAnnualized,
+          twrFrom,
+          firstFlowDate,
+          fxApproximated,
+          xirrReason,
+          twrReason,
+        ]
+      properties:
+        currency:
+          type: string
+        currentValue:
+          type: string
+          description: Current portfolio grand total in `currency`
+        totalDeposited:
+          type: string
+          description: Sum of deposits, each converted at the rate on its date
+        totalWithdrawn:
+          type: string
+          description: Sum of withdrawals, each converted at the rate on its date
+        netInvested:
+          type: string
+          description: totalDeposited − totalWithdrawn
+        profit:
+          type: string
+          description: currentValue − netInvested
+        profitPct:
+          type: string
+          nullable: true
+          description: profit / netInvested as a fraction; null when netInvested ≤ 0
+        xirr:
+          type: string
+          nullable: true
+          description: |
+            Annualized money-weighted return as a fraction (0.123 = 12.3%).
+            Null when there is no sign change in flows, the solver did not
+            converge, or the first flow is less than 30 days old.
+        twr:
+          type: string
+          nullable: true
+          description: |
+            Cumulative time-weighted return over twrFrom..today as a fraction.
+            Sub-periods run between snapshots plus a final live valuation; a
+            flow dated d counts in the sub-period ending at the first point
+            dated strictly after d (the live point absorbs the rest).
+        twrAnnualized:
+          type: string
+          nullable: true
+          description: Annualized TWR; only when the TWR period is at least 365 days
+        twrFrom:
+          type: string
+          format: date
+          nullable: true
+          description: First snapshot date the TWR is measured from
+        firstFlowDate:
+          type: string
+          format: date
+          nullable: true
+        fxApproximated:
+          type: boolean
+          description: |
+            At least one flow or snapshot was converted at the nearest later
+            rate because no rate existed on or before its date.
+        xirrReason:
+          allOf:
+            - $ref: "#/components/schemas/ReturnsUnavailableReason"
+          nullable: true
+          description: Why xirr is null; null when xirr is present
+        twrReason:
+          allOf:
+            - $ref: "#/components/schemas/ReturnsUnavailableReason"
+          nullable: true
+          description: Why twr is null; null when twr is present
+
+    ReturnsUnavailableReason:
+      type: string
+      enum:
+        [
+          no_flows,
+          insufficient_history,
+          no_sign_change,
+          no_convergence,
+          no_snapshots,
+          no_measurable_period,
+        ]
+
+    DepositKind:
+      type: string
+      enum: [deposit, withdrawal]
+
     Deposit:
       type: object
-      required: [id, month, amount, createdAt]
+      required: [id, date, kind, currency, amount, createdAt, updatedAt]
       properties:
         id:
           type: string
           format: uuid
-        month:
+        date:
           type: string
           format: date
-          description: Always the first day of the month, e.g. 2026-05-01
+        kind:
+          $ref: "#/components/schemas/DepositKind"
+        currency:
+          type: string
         amount:
           type: string
-          description: Whole rubles, no decimals
+          description: Positive decimal with up to 2 fraction digits; direction is in `kind`
         createdAt:
+          type: string
+          format: date-time
+        updatedAt:
           type: string
           format: date-time
 
@@ -1131,18 +1303,24 @@ components:
           items:
             $ref: "#/components/schemas/Deposit"
 
-    CreateDepositRequest:
+    DepositInput:
       type: object
-      required: [month, amount]
+      required: [date, kind, currency, amount]
       properties:
-        month:
+        date:
           type: string
           format: date
-          description: Any date; the day is normalized to the first of the month server-side
+          description: Flow date; at most one day in the future
+        kind:
+          $ref: "#/components/schemas/DepositKind"
+        currency:
+          type: string
+          pattern: "^[A-Z0-9]{3,10}$"
         amount:
           type: string
-          pattern: "^[1-9][0-9]*$"
-          description: Whole positive rubles
+          pattern: "^[0-9]+(\\.[0-9]{1,2})?$"
+          maxLength: 21
+          description: Positive decimal, up to 2 fraction digits (positivity is checked server-side)
 
   securitySchemes:
     sessionCookie:

@@ -20,6 +20,7 @@ import (
 	"github.com/kkulebaev/omnifolio/api/internal/instrument"
 	"github.com/kkulebaev/omnifolio/api/internal/portfolio"
 	"github.com/kkulebaev/omnifolio/api/internal/position"
+	"github.com/kkulebaev/omnifolio/api/internal/returns"
 	"github.com/kkulebaev/omnifolio/api/internal/scheduler"
 	"github.com/kkulebaev/omnifolio/api/internal/server"
 	"github.com/kkulebaev/omnifolio/api/internal/snapshot"
@@ -96,6 +97,7 @@ func run() error {
 	fxSvc := fx.NewService(queries, log)
 	portfolioSvc := portfolio.NewService(queries, fxSvc)
 	depositsSvc := deposits.NewService(pool)
+	returnsSvc := returns.NewService(queries, portfolioSvc, fxSvc, log)
 	syncerSvc := syncer.NewService(pool, encryptor, registry, log)
 	snapshotSvc := snapshot.NewService(queries, portfolioSvc, log)
 
@@ -151,6 +153,7 @@ func run() error {
 		Position:    positionSvc,
 		Portfolio:   portfolioSvc,
 		Deposits:    depositsSvc,
+		Returns:     returnsSvc,
 		Syncer:      syncerSvc,
 		Snapshot:    snapshotSvc,
 		Queries:     queries,

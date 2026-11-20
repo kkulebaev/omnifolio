@@ -5,12 +5,15 @@
  * Personal investments tracker.
  * OpenAPI spec version: 1.0.0
  */
+import type { DepositKind } from './depositKind';
 
 export interface Deposit {
   id: string;
-  /** Always the first day of the month, e.g. 2026-05-01 */
-  month: string;
-  /** Whole rubles, no decimals */
+  date: string;
+  kind: DepositKind;
+  currency: string;
+  /** Positive decimal with up to 2 fraction digits; direction is in `kind` */
   amount: string;
   createdAt: string;
+  updatedAt: string;
 }

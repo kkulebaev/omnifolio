@@ -21,4 +21,11 @@ export interface PortfolioSnapshot {
   byCurrency: PortfolioSnapshotByCurrency;
   /** Sums in `displayCurrency` of this snapshot, keyed by account id */
   byAccount: PortfolioSnapshotByAccount;
+  /**
+     * Cumulative deposits minus withdrawals dated strictly before `date`
+     * (a snapshot is taken before same-day flows are reflected), in
+     * `displayCurrency` of this snapshot; each flow is converted at the
+     * rate on its own date.
+     */
+  netInvested: string;
 }
