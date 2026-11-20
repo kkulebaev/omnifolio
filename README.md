@@ -37,7 +37,7 @@
 - 🔌 **Multi-source sync** — T-Invest (RU stocks), Bybit & Binance (crypto), manual accounts.
 - 💱 **Multi-currency** — daily CBR FX rates, per-account values converted to a chosen display currency.
 - 📈 **Live quotes** — Finnhub for US, T-Invest for MOEX, Bybit for crypto, refreshed by a one-shot cron.
-- 📒 **Deposits journal** — record monthly contributions, the foundation for future TWR/XIRR returns.
+- 📒 **Deposits journal** — record dated deposits and withdrawals in any currency; returns (net invested, P&L, XIRR, TWR) are computed from it at historical CBR rates.
 - 📱 **Mobile-friendly** — responsive UI for phones (off-canvas sidebar, card-style tables).
 - 🔒 **AES-GCM encrypted credentials** — broker tokens never leave the DB in plaintext.
 - 📑 **OpenAPI single source of truth** — backend handlers and TS client are both generated.
