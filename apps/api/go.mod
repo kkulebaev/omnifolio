@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/alexedwards/argon2id v1.0.0
-	github.com/caarlos0/env/v11 v11.4.1
+	github.com/caarlos0/env/v11 v11.4.2
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/google/uuid v1.6.0
