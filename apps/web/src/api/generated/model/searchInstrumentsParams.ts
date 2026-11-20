@@ -7,9 +7,9 @@
  */
 
 export type SearchInstrumentsParams = {
-/**
- * @minLength 1
- * @maxLength 50
- */
-q: string;
+  /**
+   * @minLength 1
+   * @maxLength 50
+   */
+  q: string;
 };

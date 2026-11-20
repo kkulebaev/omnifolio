@@ -70,6 +70,26 @@ import { fetcher } from '../mutator';
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
+const getHeaders = (...sources: (RequestInit['headers'] | Record<string, string | undefined>)[]) => {
+  const seen = new Set<string>();
+  const layers: [string, string | readonly string[]][][] = [];
+  for (const source of sources.reverse()) {
+    if (!source) continue;
+    const entries = source instanceof Headers
+      ? source.entries()
+      : Symbol.iterator in source
+        ? Array.from(source as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string])
+        : Object.entries<string | readonly string[] | undefined>(source);
+    const layer: [string, string | readonly string[]][] = [];
+    for (const [name, value] of entries) {
+      if (value !== undefined && !seen.has(name.toLowerCase())) layer.push([name, value]);
+    }
+    for (const [name] of layer) seen.add(name.toLowerCase());
+    layers.push(layer);
+  }
+  return Object.fromEntries(layers.reverse().flat()) as Extract<RequestInit['headers'], Record<string, unknown>>;
+};
+
 
 export const getGetHealthzUrl = () => {
 
@@ -119,17 +139,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHealthz>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHealthz>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type GetHealthzQueryResult = NonNullable<Awaited<ReturnType<typeof getHealthz>>>
 export type GetHealthzQueryError = unknown
 
 
-/**
- * @summary Liveness probe
- */
-
+/** @summary Liveness probe */
 export function useGetHealthz<TData = Awaited<ReturnType<typeof getHealthz>>, TError = unknown>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealthz>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -137,7 +154,7 @@ export function useGetHealthz<TData = Awaited<ReturnType<typeof getHealthz>>, TE
 
   const queryOptions = getGetHealthzQueryOptions(options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof getHealthz>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -163,17 +180,11 @@ export const getLoginUrl = () => {
  */
 export const login = async (loginRequest: LoginRequest, options?: Parameters<typeof fetcher>[1]): Promise<User> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<User>(getLoginUrl(),
+  return fetcher<User>(getLoginUrl(),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(loginRequest)
   }
 );}
@@ -216,9 +227,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type LoginMutationError = UnauthorizedResponse | ValidationErrorResponse
     export type LoginMutationVariables = {data: LoginRequest}
 
-    /**
- * @summary Login with email and password
- */
+    /** @summary Login with email and password */
 export const useLogin = <TError = UnauthorizedResponse | ValidationErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof login>>, TError,LoginMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -290,9 +299,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type LogoutMutationError = unknown
 
 
-    /**
- * @summary Logout current session
- */
+    /** @summary Logout current session */
 export const useLogout = <TError = unknown,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logout>>, TError,void, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -352,17 +359,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type GetMeQueryResult = NonNullable<Awaited<ReturnType<typeof getMe>>>
 export type GetMeQueryError = UnauthorizedResponse
 
 
-/**
- * @summary Get current user
- */
-
+/** @summary Get current user */
 export function useGetMe<TData = Awaited<ReturnType<typeof getMe>>, TError = UnauthorizedResponse>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -370,7 +374,7 @@ export function useGetMe<TData = Awaited<ReturnType<typeof getMe>>, TError = Una
 
   const queryOptions = getGetMeQueryOptions(options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -431,17 +435,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccounts>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccounts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ListAccountsQueryResult = NonNullable<Awaited<ReturnType<typeof listAccounts>>>
 export type ListAccountsQueryError = UnauthorizedResponse
 
 
-/**
- * @summary List user accounts
- */
-
+/** @summary List user accounts */
 export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>, TError = UnauthorizedResponse>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccounts>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -449,7 +450,7 @@ export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>
 
   const queryOptions = getListAccountsQueryOptions(options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof listAccounts>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -475,17 +476,11 @@ export const getCreateAccountUrl = () => {
  */
 export const createAccount = async (createAccountRequest: CreateAccountRequest, options?: Parameters<typeof fetcher>[1]): Promise<Account> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<Account>(getCreateAccountUrl(),
+  return fetcher<Account>(getCreateAccountUrl(),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(createAccountRequest)
   }
 );}
@@ -528,9 +523,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateAccountMutationError = UnauthorizedResponse | ValidationErrorResponse
     export type CreateAccountMutationVariables = {data: CreateAccountRequest}
 
-    /**
- * @summary Create account
- */
+    /** @summary Create account */
 export const useCreateAccount = <TError = UnauthorizedResponse | ValidationErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAccount>>, TError,CreateAccountMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -558,17 +551,11 @@ export const getPreviewTInvestAccountsUrl = () => {
  */
 export const previewTInvestAccounts = async (tInvestPreviewRequest: TInvestPreviewRequest, options?: Parameters<typeof fetcher>[1]): Promise<TInvestPreviewResponse> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<TInvestPreviewResponse>(getPreviewTInvestAccountsUrl(),
+  return fetcher<TInvestPreviewResponse>(getPreviewTInvestAccountsUrl(),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(tInvestPreviewRequest)
   }
 );}
@@ -612,6 +599,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type PreviewTInvestAccountsMutationVariables = {data: TInvestPreviewRequest}
 
     /**
+ * Validates a T-Invest token and returns the list of available sub-accounts
+ * (брокерский / ИИС / премиум). Used by the UI before account creation so
+ * the user can pick which sub-account to mirror.
  * @summary Preview T-Invest sub-accounts for a token
  */
 export const usePreviewTInvestAccounts = <TError = UnauthorizedResponse | ValidationErrorResponse,
@@ -688,6 +678,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SyncAccountMutationVariables = {accountId: string}
 
     /**
+ * Synchronously fetches positions and prices for a tinvest/bybit account.
+ * Manual accounts return 422.
  * @summary Trigger an immediate sync for a brokerage account
  */
 export const useSyncAccount = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
@@ -749,17 +741,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: computed(() => toValue(accountId) !== null && toValue(accountId) !== undefined), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>
+   return  { queryKey, queryFn, enabled: computed(() => toValue(accountId) !== null && toValue(accountId) !== undefined), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type GetAccountQueryResult = NonNullable<Awaited<ReturnType<typeof getAccount>>>
 export type GetAccountQueryError = UnauthorizedResponse | NotFoundResponse
 
 
-/**
- * @summary Get account with positions
- */
-
+/** @summary Get account with positions */
 export function useGetAccount<TData = Awaited<ReturnType<typeof getAccount>>, TError = UnauthorizedResponse | NotFoundResponse>(
  accountId: MaybeRefOrGetter<string>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -767,7 +756,7 @@ export function useGetAccount<TData = Awaited<ReturnType<typeof getAccount>>, TE
 
   const queryOptions = getGetAccountQueryOptions(accountId,options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -794,17 +783,11 @@ export const getUpdateAccountUrl = (accountId: string,) => {
 export const updateAccount = async (accountId: string,
     updateAccountRequest: UpdateAccountRequest, options?: Parameters<typeof fetcher>[1]): Promise<Account> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<Account>(getUpdateAccountUrl(accountId),
+  return fetcher<Account>(getUpdateAccountUrl(accountId),
   {
     ...options,
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(updateAccountRequest)
   }
 );}
@@ -847,9 +830,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateAccountMutationError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse
     export type UpdateAccountMutationVariables = {accountId: string;data: UpdateAccountRequest}
 
-    /**
- * @summary Update account (rename)
- */
+    /** @summary Update account (rename) */
 export const useUpdateAccount = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAccount>>, TError,UpdateAccountMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -921,9 +902,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteAccountMutationError = UnauthorizedResponse | NotFoundResponse
     export type DeleteAccountMutationVariables = {accountId: string}
 
-    /**
- * @summary Delete account
- */
+    /** @summary Delete account */
 export const useDeleteAccount = <TError = UnauthorizedResponse | NotFoundResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccount>>, TError,DeleteAccountMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -949,17 +928,11 @@ export const getCreatePositionUrl = (accountId: string,) => {
 export const createPosition = async (accountId: string,
     createPositionRequest: CreatePositionRequest, options?: Parameters<typeof fetcher>[1]): Promise<Position> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<Position>(getCreatePositionUrl(accountId),
+  return fetcher<Position>(getCreatePositionUrl(accountId),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(createPositionRequest)
   }
 );}
@@ -1002,9 +975,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreatePositionMutationError = UnauthorizedResponse | NotFoundResponse | ConflictResponse | ValidationErrorResponse
     export type CreatePositionMutationVariables = {accountId: string;data: CreatePositionRequest}
 
-    /**
- * @summary Add position to account
- */
+    /** @summary Add position to account */
 export const useCreatePosition = <TError = UnauthorizedResponse | NotFoundResponse | ConflictResponse | ValidationErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPosition>>, TError,CreatePositionMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -1032,17 +1003,11 @@ export const updatePosition = async (accountId: string,
     instrumentId: string,
     updatePositionRequest: UpdatePositionRequest, options?: Parameters<typeof fetcher>[1]): Promise<Position> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<Position>(getUpdatePositionUrl(accountId,instrumentId),
+  return fetcher<Position>(getUpdatePositionUrl(accountId,instrumentId),
   {
     ...options,
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(updatePositionRequest)
   }
 );}
@@ -1085,9 +1050,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdatePositionMutationError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse
     export type UpdatePositionMutationVariables = {accountId: string;instrumentId: string;data: UpdatePositionRequest}
 
-    /**
- * @summary Update position quantity
- */
+    /** @summary Update position quantity */
 export const useUpdatePosition = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePosition>>, TError,UpdatePositionMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -1161,9 +1124,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeletePositionMutationError = UnauthorizedResponse | NotFoundResponse
     export type DeletePositionMutationVariables = {accountId: string;instrumentId: string}
 
-    /**
- * @summary Delete position
- */
+    /** @summary Delete position */
 export const useDeletePosition = <TError = UnauthorizedResponse | NotFoundResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePosition>>, TError,DeletePositionMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -1230,17 +1191,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchInstruments>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchInstruments>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type SearchInstrumentsQueryResult = NonNullable<Awaited<ReturnType<typeof searchInstruments>>>
 export type SearchInstrumentsQueryError = UnauthorizedResponse
 
 
-/**
- * @summary Search instruments by ticker or name
- */
-
+/** @summary Search instruments by ticker or name */
 export function useSearchInstruments<TData = Awaited<ReturnType<typeof searchInstruments>>, TError = UnauthorizedResponse>(
  params: MaybeRefOrGetter<SearchInstrumentsParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchInstruments>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -1248,7 +1206,7 @@ export function useSearchInstruments<TData = Awaited<ReturnType<typeof searchIns
 
   const queryOptions = getSearchInstrumentsQueryOptions(params,options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof searchInstruments>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -1316,17 +1274,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInstruments>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInstruments>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ListInstrumentsQueryResult = NonNullable<Awaited<ReturnType<typeof listInstruments>>>
 export type ListInstrumentsQueryError = UnauthorizedResponse
 
 
-/**
- * @summary List instruments with optional search and pagination
- */
-
+/** @summary List instruments with optional search and pagination */
 export function useListInstruments<TData = Awaited<ReturnType<typeof listInstruments>>, TError = UnauthorizedResponse>(
  params?: MaybeRefOrGetter<ListInstrumentsParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInstruments>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -1334,7 +1289,7 @@ export function useListInstruments<TData = Awaited<ReturnType<typeof listInstrum
 
   const queryOptions = getListInstrumentsQueryOptions(params,options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof listInstruments>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -1363,17 +1318,11 @@ export const getCreateInstrumentUrl = () => {
  */
 export const createInstrument = async (createPersonalInstrumentRequest: CreatePersonalInstrumentRequest, options?: Parameters<typeof fetcher>[1]): Promise<Instrument> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<Instrument>(getCreateInstrumentUrl(),
+  return fetcher<Instrument>(getCreateInstrumentUrl(),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(createPersonalInstrumentRequest)
   }
 );}
@@ -1417,6 +1366,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateInstrumentMutationVariables = {data: CreatePersonalInstrumentRequest}
 
     /**
+ * Creates a personal instrument owned by the caller. Restricted to manual asset
+ * classes (`real_estate`, `vehicle`, `other_asset`); exchange-traded and cash
+ * classes are global-only and maintained by the cron worker.
  * @summary Create a personal instrument (real estate, vehicle, other property)
  */
 export const useCreateInstrument = <TError = UnauthorizedResponse | ConflictResponse | ValidationErrorResponse,
@@ -1446,17 +1398,11 @@ export const getUpdateInstrumentUrl = (instrumentId: string,) => {
 export const updateInstrument = async (instrumentId: string,
     updateInstrumentRequest: UpdateInstrumentRequest, options?: Parameters<typeof fetcher>[1]): Promise<Instrument> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<Instrument>(getUpdateInstrumentUrl(instrumentId),
+  return fetcher<Instrument>(getUpdateInstrumentUrl(instrumentId),
   {
     ...options,
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(updateInstrumentRequest)
   }
 );}
@@ -1500,6 +1446,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateInstrumentMutationVariables = {instrumentId: string;data: UpdateInstrumentRequest}
 
     /**
+ * Renames or re-tickers a personal instrument owned by the caller.
+ * `currency` and `assetClass` are immutable to preserve historical price semantics.
  * @summary Update a personal instrument (rename)
  */
 export const useUpdateInstrument = <TError = UnauthorizedResponse | NotFoundResponse | ConflictResponse | ValidationErrorResponse,
@@ -1576,6 +1524,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteInstrumentMutationVariables = {instrumentId: string}
 
     /**
+ * Deletes a personal instrument owned by the caller. Returns 409 if any
+ * position references it — remove positions first.
  * @summary Delete a personal instrument
  */
 export const useDeleteInstrument = <TError = UnauthorizedResponse | NotFoundResponse | ConflictResponse,
@@ -1606,17 +1556,11 @@ export const getSetInstrumentPriceUrl = (instrumentId: string,) => {
 export const setInstrumentPrice = async (instrumentId: string,
     setInstrumentPriceRequest: SetInstrumentPriceRequest, options?: Parameters<typeof fetcher>[1]): Promise<void> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<void>(getSetInstrumentPriceUrl(instrumentId),
+  return fetcher<void>(getSetInstrumentPriceUrl(instrumentId),
   {
     ...options,
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(setInstrumentPriceRequest)
   }
 );}
@@ -1660,6 +1604,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SetInstrumentPriceMutationVariables = {instrumentId: string;data: SetInstrumentPriceRequest}
 
     /**
+ * Sets the latest price of a personal instrument. Ownership is enforced at
+ * the SQL level inside the UPSERT statement; not-yours and not-found are
+ * indistinguishable (both return 404).
  * @summary Update the current price of a personal instrument
  */
 export const useSetInstrumentPrice = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
@@ -1728,17 +1675,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolio>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolio>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type GetPortfolioQueryResult = NonNullable<Awaited<ReturnType<typeof getPortfolio>>>
 export type GetPortfolioQueryError = UnauthorizedResponse
 
 
-/**
- * @summary Aggregated portfolio across all accounts
- */
-
+/** @summary Aggregated portfolio across all accounts */
 export function useGetPortfolio<TData = Awaited<ReturnType<typeof getPortfolio>>, TError = UnauthorizedResponse>(
  params?: MaybeRefOrGetter<GetPortfolioParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortfolio>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -1746,7 +1690,7 @@ export function useGetPortfolio<TData = Awaited<ReturnType<typeof getPortfolio>>
 
   const queryOptions = getGetPortfolioQueryOptions(params,options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof getPortfolio>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -1814,17 +1758,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioHistory>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioHistory>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type GetPortfolioHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getPortfolioHistory>>>
 export type GetPortfolioHistoryQueryError = UnauthorizedResponse | ValidationErrorResponse
 
 
-/**
- * @summary Daily portfolio snapshots within a date range
- */
-
+/** @summary Daily portfolio snapshots within a date range */
 export function useGetPortfolioHistory<TData = Awaited<ReturnType<typeof getPortfolioHistory>>, TError = UnauthorizedResponse | ValidationErrorResponse>(
  params?: MaybeRefOrGetter<GetPortfolioHistoryParams>, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortfolioHistory>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -1832,7 +1773,7 @@ export function useGetPortfolioHistory<TData = Awaited<ReturnType<typeof getPort
 
   const queryOptions = getGetPortfolioHistoryQueryOptions(params,options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof getPortfolioHistory>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -1893,17 +1834,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData>
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ListDepositsQueryResult = NonNullable<Awaited<ReturnType<typeof listDeposits>>>
 export type ListDepositsQueryError = UnauthorizedResponse
 
 
-/**
- * @summary List user deposits
- */
-
+/** @summary List user deposits */
 export function useListDeposits<TData = Awaited<ReturnType<typeof listDeposits>>, TError = UnauthorizedResponse>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData>>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient
@@ -1911,7 +1849,7 @@ export function useListDeposits<TData = Awaited<ReturnType<typeof listDeposits>>
 
   const queryOptions = getListDepositsQueryOptions(options)
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+  const query = useQuery(queryOptions as UseQueryOptions<Awaited<ReturnType<typeof listDeposits>>, TError, TData>, queryClient) as UseQueryReturnType<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   query.queryKey = unref(queryOptions).queryKey as DataTag<QueryKey, TData, TError>;
 
@@ -1937,17 +1875,11 @@ export const getCreateDepositUrl = () => {
  */
 export const createDeposit = async (createDepositRequest: CreateDepositRequest, options?: Parameters<typeof fetcher>[1]): Promise<Deposit> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-return fetcher<Deposit>(getCreateDepositUrl(),
+  return fetcher<Deposit>(getCreateDepositUrl(),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
     body: JSON.stringify(createDepositRequest)
   }
 );}
@@ -1990,9 +1922,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateDepositMutationError = UnauthorizedResponse | ValidationErrorResponse
     export type CreateDepositMutationVariables = {data: CreateDepositRequest}
 
-    /**
- * @summary Create a deposit
- */
+    /** @summary Create a deposit */
 export const useCreateDeposit = <TError = UnauthorizedResponse | ValidationErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeposit>>, TError,CreateDepositMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<
@@ -2064,9 +1994,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteDepositMutationError = UnauthorizedResponse | NotFoundResponse
     export type DeleteDepositMutationVariables = {depositId: string}
 
-    /**
- * @summary Delete a deposit
- */
+    /** @summary Delete a deposit */
 export const useDeleteDeposit = <TError = UnauthorizedResponse | NotFoundResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDeposit>>, TError,DeleteDepositMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
  , queryClient?: QueryClient): UseMutationReturnType<

@@ -7,9 +7,9 @@
  */
 
 export type GetPortfolioParams = {
-/**
- * Display currency. Defaults to user's preference.
- * @pattern ^[A-Z]{3,5}$
- */
-currency?: string;
+  /**
+   * Display currency. Defaults to user's preference.
+   * @pattern ^[A-Z]{3,5}$
+   */
+  currency?: string;
 };

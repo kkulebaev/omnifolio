@@ -7,12 +7,8 @@
  */
 
 export type GetPortfolioHistoryParams = {
-/**
- * Inclusive start date (UTC). Defaults to 90 days before `to`.
- */
-from?: string;
-/**
- * Inclusive end date (UTC). Defaults to today.
- */
-to?: string;
+  /** Inclusive start date (UTC). Defaults to 90 days before `to`. */
+  from?: string;
+  /** Inclusive end date (UTC). Defaults to today. */
+  to?: string;
 };

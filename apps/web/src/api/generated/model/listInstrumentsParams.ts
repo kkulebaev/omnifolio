@@ -9,27 +9,25 @@ import type { AssetClass } from './assetClass';
 import type { ListInstrumentsScope } from './listInstrumentsScope';
 
 export type ListInstrumentsParams = {
-/**
- * Filter by ticker or name (case-insensitive substring).
- * @minLength 1
- * @maxLength 50
- */
-q?: string;
-assetClass?: AssetClass;
-/**
- * Restrict results to a scope.
- * `mine` — caller's personal instruments only.
- * `global` — canonical catalog only.
- * Omitted — union of both (caller's personal + global).
- */
-scope?: ListInstrumentsScope;
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
-/**
- * @minimum 0
- */
-offset?: number;
+  /**
+   * Filter by ticker or name (case-insensitive substring).
+   * @minLength 1
+   * @maxLength 50
+   */
+  q?: string;
+  assetClass?: AssetClass;
+  /**
+   * Restrict results to a scope.
+   * `mine` — caller's personal instruments only.
+   * `global` — canonical catalog only.
+   * Omitted — union of both (caller's personal + global).
+   */
+  scope?: ListInstrumentsScope;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /** @minimum 0 */
+  offset?: number;
 };
