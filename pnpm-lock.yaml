@@ -228,9 +228,6 @@ importers:
       vue-sonner:
         specifier: ^2.0.9
         version: 2.0.9
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.5
