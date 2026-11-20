@@ -12,6 +12,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Node 25+ exposes its own localStorage global (undefined without
+    // --localstorage-file), which shadows jsdom's Storage in test workers.
+    execArgv: ["--no-experimental-webstorage"],
   },
   server: {
     port: 5173,
