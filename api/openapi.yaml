@@ -171,6 +171,38 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+  /accounts/{accountId}/credentials:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    put:
+      tags: [accounts]
+      summary: Replace brokerage credentials
+      operationId: updateAccountCredentials
+      description: |
+        Validates the new credentials against the source, stores them and kicks
+        off a sync. For type=tinvest provide `token` (the mirrored sub-account
+        stays the same); for type=bybit or type=binance provide `apiKey` and
+        `apiSecret`. Manual accounts return 422.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAccountCredentialsRequest"
+      responses:
+        "200":
+          description: Credentials replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /accounts/{accountId}:
     parameters:
       - $ref: "#/components/parameters/AccountId"
@@ -865,6 +897,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TInvestSubAccount"
+
+    UpdateAccountCredentialsRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 10
+          maxLength: 200
+          description: T-Invest read-only API token (type=tinvest)
+        apiKey:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Read-only API key (type=bybit or type=binance)
+        apiSecret:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Read-only API secret (type=bybit or type=binance)
 
     UpdateAccountRequest:
       type: object

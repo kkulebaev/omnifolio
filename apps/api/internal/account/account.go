@@ -20,6 +20,7 @@ var (
 	ErrNotFound         = errors.New("account: not found")
 	ErrTypeNotSupported = errors.New("account: type not supported in this version")
 	ErrTokenInvalid     = errors.New("account: token invalid")
+	ErrNotBrokerage     = errors.New("account: not a brokerage account")
 )
 
 const (
@@ -141,6 +142,89 @@ func (s *Service) createBrokerage(ctx context.Context, userID uuid.UUID, in Crea
 
 	row.LastSyncStatus = &pending
 	return toAccount(row), nil
+}
+
+type CredentialsInput struct {
+	TInvestToken string
+	APIKey       string
+	APISecret    string
+}
+
+// UpdateCredentials replaces the stored credentials of a brokerage account
+// after validating them against the source, and marks the account pending so
+// the caller can trigger a fresh sync.
+func (s *Service) UpdateCredentials(ctx context.Context, userID, accountID uuid.UUID, in CredentialsInput) (Account, error) {
+	acc, err := s.Get(ctx, userID, accountID)
+	if err != nil {
+		return Account{}, err
+	}
+
+	var plainCreds []byte
+	switch acc.SourceType {
+	case TypeTInvest:
+		// The sub-account choice lives inside the encrypted blob; a token
+		// rotation must not silently re-point the account elsewhere.
+		subAccountID, err := s.storedTInvestSubAccount(ctx, accountID)
+		if err != nil {
+			return Account{}, err
+		}
+		plainCreds = encodeTInvestCreds(CreateInput{TInvestToken: in.TInvestToken, TInvestAccountID: subAccountID})
+	case TypeBybit:
+		plainCreds = encodeBybitCreds(CreateInput{BybitAPIKey: in.APIKey, BybitAPISecret: in.APISecret})
+	case TypeBinance:
+		plainCreds = encodeBinanceCreds(CreateInput{BinanceAPIKey: in.APIKey, BinanceAPISecret: in.APISecret})
+	default:
+		return Account{}, ErrNotBrokerage
+	}
+
+	if err := s.validateBrokerageCreds(ctx, acc.SourceType, plainCreds); err != nil {
+		return Account{}, err
+	}
+
+	ciphertext, nonce, err := s.enc.Encrypt(plainCreds, accountID[:])
+	if err != nil {
+		return Account{}, fmt.Errorf("encrypt creds: %w", err)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Account{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	qtx := s.q.WithTx(tx)
+
+	if err := qtx.UpsertAccountCredentials(ctx, storage.UpsertAccountCredentialsParams{
+		AccountID:  accountID,
+		Ciphertext: ciphertext,
+		Nonce:      nonce,
+		KeyVersion: int32(s.enc.KeyVersion()),
+	}); err != nil {
+		return Account{}, fmt.Errorf("upsert credentials: %w", err)
+	}
+	pending := "pending"
+	if err := qtx.SetAccountSyncStatus(ctx, storage.SetAccountSyncStatusParams{
+		ID:             accountID,
+		LastSyncStatus: &pending,
+	}); err != nil {
+		return Account{}, fmt.Errorf("set pending: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Account{}, fmt.Errorf("commit: %w", err)
+	}
+
+	return s.Get(ctx, userID, accountID)
+}
+
+func (s *Service) storedTInvestSubAccount(ctx context.Context, accountID uuid.UUID) (string, error) {
+	row, err := s.q.GetAccountCredentials(ctx, accountID)
+	if err != nil {
+		return "", fmt.Errorf("get credentials: %w", err)
+	}
+	plain, err := s.enc.Decrypt(row.Ciphertext, row.Nonce, accountID[:])
+	if err != nil {
+		return "", fmt.Errorf("decrypt credentials: %w", err)
+	}
+	return extractSubAccountID(TypeTInvest, plain)
 }
 
 // validateBrokerageCreds calls ListSubAccounts on the matching source to confirm

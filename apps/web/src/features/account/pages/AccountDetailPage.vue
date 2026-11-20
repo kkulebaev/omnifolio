@@ -23,6 +23,7 @@ import {
 import { formatDate, formatQuantity } from "@/lib/formatters";
 import { confirm } from "@/lib/confirm";
 import AddPositionDialog from "../components/AddPositionDialog.vue";
+import UpdateCredentialsDialog from "../components/UpdateCredentialsDialog.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -42,6 +43,7 @@ const deletePosition = useDeletePosition();
 const syncAccount = useSyncAccount();
 
 const dialogOpen = ref(false);
+const credentialsOpen = ref(false);
 
 const isManual = computed(() => account.data.value?.type === "manual");
 
@@ -137,6 +139,9 @@ function statusLabel(s: string | null | undefined): string {
           >
             {{ syncAccount.isPending.value ? "Синхронизирую…" : "Синхронизировать" }}
           </Button>
+          <Button v-if="!isManual" variant="outline" @click="credentialsOpen = true">
+            Обновить ключ
+          </Button>
           <Button variant="outline" @click="handleDeleteAccount">Удалить аккаунт</Button>
         </CardContent>
       </Card>
@@ -184,6 +189,12 @@ function statusLabel(s: string | null | undefined): string {
       </Card>
 
       <AddPositionDialog v-if="isManual" v-model:open="dialogOpen" :account-id="accountId" />
+      <UpdateCredentialsDialog
+        v-else
+        v-model:open="credentialsOpen"
+        :account-id="accountId"
+        :account-type="account.data.value.type"
+      />
     </template>
   </div>
 </template>

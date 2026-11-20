@@ -367,7 +367,9 @@ portfolio_snapshots (user_id, snapshot_date DATE, display_currency,
   accounts с `source_type IN ('tinvest','bybit','binance')`.
 - On-demand: `POST /accounts/:id/sync` — синхронный, ждёт результат.
 - На создание T-Invest аккаунта — async первый sync сразу после INSERT
-  (`lastSyncStatus='pending'`).
+  (`lastSyncStatus='pending'`). Так же после замены ключа через
+  `PUT /accounts/:id/credentials`: ключ сначала проверяется у источника,
+  у T-Invest выбранный sub-аккаунт сохраняется.
 - Применение снимка — одна транзакция: UPSERT текущих позиций + DELETE
   ушедших + UPDATE `last_sync_*`. Concurrency-защита —
   `pg_try_advisory_xact_lock(hashtext('sync:'||account_id))`.
@@ -511,7 +513,8 @@ API через `Authorization: Bearer ${ADMIN_API_KEY}`.
 
 - **auth**: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`.
 - **accounts**: `GET/POST /accounts`, `GET/PUT/DELETE /accounts/{id}`,
-  `POST /accounts/tinvest/preview`, `POST /accounts/{id}/sync`.
+  `POST /accounts/tinvest/preview`, `POST /accounts/{id}/sync`,
+  `PUT /accounts/{id}/credentials`.
 - **positions**: `GET /accounts/{id}/positions`,
   `POST /accounts/{id}/positions`,
   `PUT/DELETE /accounts/{id}/positions/{instrumentId}`.

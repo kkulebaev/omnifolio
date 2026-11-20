@@ -56,6 +56,7 @@ export * from './tInvestPreviewResponse';
 export * from './tInvestSubAccount';
 export * from './tInvestSubAccountType';
 export * from './unauthorizedResponse';
+export * from './updateAccountCredentialsRequest';
 export * from './updateAccountRequest';
 export * from './updateInstrumentRequest';
 export * from './updatePositionRequest';

@@ -59,6 +59,7 @@ import type {
   TInvestPreviewRequest,
   TInvestPreviewResponse,
   UnauthorizedResponse,
+  UpdateAccountCredentialsRequest,
   UpdateAccountRequest,
   UpdateInstrumentRequest,
   UpdatePositionRequest,
@@ -693,6 +694,89 @@ export const useSyncAccount = <TError = UnauthorizedResponse | NotFoundResponse 
         TContext
       > => {
       return useMutation(getSyncAccountMutationOptions(options), queryClient);
+    }
+
+export const getUpdateAccountCredentialsUrl = (accountId: string,) => {
+
+
+
+
+  return `/accounts/${accountId}/credentials`
+}
+
+/**
+ * Validates the new credentials against the source, stores them and kicks
+ * off a sync. For type=tinvest provide `token` (the mirrored sub-account
+ * stays the same); for type=bybit or type=binance provide `apiKey` and
+ * `apiSecret`. Manual accounts return 422.
+ * @summary Replace brokerage credentials
+ */
+export const updateAccountCredentials = async (accountId: string,
+    updateAccountCredentialsRequest: UpdateAccountCredentialsRequest, options?: Parameters<typeof fetcher>[1]): Promise<Account> => {
+
+  return fetcher<Account>(getUpdateAccountCredentialsUrl(accountId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, options?.headers),
+    body: JSON.stringify(updateAccountCredentialsRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateAccountCredentialsMutationKey = () => ['updateAccountCredentials'] as const;
+
+export const getUpdateAccountCredentialsMutationOptions = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAccountCredentials>>, TError,UpdateAccountCredentialsMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAccountCredentials>>, TError,UpdateAccountCredentialsMutationVariables, TContext> => {
+
+const mutationKey = getUpdateAccountCredentialsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAccountCredentials>>, UpdateAccountCredentialsMutationVariables> = (props) => {
+          const {accountId,data} = props ?? {};
+
+          return  updateAccountCredentials(accountId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAccountCredentialsMutationResult = NonNullable<Awaited<ReturnType<typeof updateAccountCredentials>>>
+    export type UpdateAccountCredentialsMutationBody = UpdateAccountCredentialsRequest
+    export type UpdateAccountCredentialsMutationError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse
+    export type UpdateAccountCredentialsMutationVariables = {accountId: string;data: UpdateAccountCredentialsRequest}
+
+    /**
+ * Validates the new credentials against the source, stores them and kicks
+ * off a sync. For type=tinvest provide `token` (the mirrored sub-account
+ * stays the same); for type=bybit or type=binance provide `apiKey` and
+ * `apiSecret`. Manual accounts return 422.
+ * @summary Replace brokerage credentials
+ */
+export const useUpdateAccountCredentials = <TError = UnauthorizedResponse | NotFoundResponse | ValidationErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAccountCredentials>>, TError,UpdateAccountCredentialsMutationVariables, TContext>, request?: SecondParameter<typeof fetcher>}
+ , queryClient?: QueryClient): UseMutationReturnType<
+        Awaited<ReturnType<typeof updateAccountCredentials>>,
+        TError,
+        UpdateAccountCredentialsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateAccountCredentialsMutationOptions(options), queryClient);
     }
 
 export const getGetAccountUrl = (accountId: string,) => {

@@ -315,6 +315,90 @@ func (s *serverImpl) UpdateAccount(ctx context.Context, req oapi.UpdateAccountRe
 	return oapi.UpdateAccount200JSONResponse(toOapiAccount(a)), nil
 }
 
+func (s *serverImpl) UpdateAccountCredentials(ctx context.Context, req oapi.UpdateAccountCredentialsRequestObject) (oapi.UpdateAccountCredentialsResponseObject, error) {
+	user, ok := auth.UserFromContext(ctx)
+	if !ok {
+		return oapi.UpdateAccountCredentials401ApplicationProblemPlusJSONResponse{
+			UnauthorizedApplicationProblemPlusJSONResponse: oapi.UnauthorizedApplicationProblemPlusJSONResponse(unauthorizedProblem()),
+		}, nil
+	}
+	if req.Body == nil {
+		return updateCredentialsValidationResp("missing body", nil), nil
+	}
+
+	a, err := s.deps.Account.Get(ctx, user.ID, req.AccountId)
+	if err != nil {
+		if errors.Is(err, account.ErrNotFound) {
+			return oapi.UpdateAccountCredentials404ApplicationProblemPlusJSONResponse{
+				NotFoundApplicationProblemPlusJSONResponse: oapi.NotFoundApplicationProblemPlusJSONResponse(notFoundProblem("account")),
+			}, nil
+		}
+		return nil, err
+	}
+
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	in := account.CredentialsInput{
+		TInvestToken: deref(req.Body.Token),
+		APIKey:       deref(req.Body.ApiKey),
+		APISecret:    deref(req.Body.ApiSecret),
+	}
+	var rejectedField, rejectedBy string
+	switch a.SourceType {
+	case account.TypeTInvest:
+		if in.TInvestToken == "" {
+			return updateCredentialsValidationResp("Validation failed",
+				map[string]string{"token": "required for type=tinvest"}), nil
+		}
+		rejectedField, rejectedBy = "token", "T-Invest"
+	case account.TypeBybit, account.TypeBinance:
+		fields := map[string]string{}
+		if in.APIKey == "" {
+			fields["apiKey"] = "required for type=" + a.SourceType
+		}
+		if in.APISecret == "" {
+			fields["apiSecret"] = "required for type=" + a.SourceType
+		}
+		if len(fields) > 0 {
+			return updateCredentialsValidationResp("Validation failed", fields), nil
+		}
+		rejectedField, rejectedBy = "apiKey", "Bybit"
+		if a.SourceType == account.TypeBinance {
+			rejectedBy = "Binance"
+		}
+	default:
+		return updateCredentialsValidationResp("Manual accounts have no credentials", nil), nil
+	}
+
+	a, err = s.deps.Account.UpdateCredentials(ctx, user.ID, req.AccountId, in)
+	if err != nil {
+		switch {
+		case errors.Is(err, account.ErrTokenInvalid):
+			return updateCredentialsValidationResp("Invalid credentials",
+				map[string]string{rejectedField: "rejected by " + rejectedBy}), nil
+		case errors.Is(err, source.ErrSubAccountNotFound):
+			return updateCredentialsValidationResp("Sub-account not found",
+				map[string]string{"token": "this token has no access to the mirrored T-Invest sub-account"}), nil
+		}
+		return nil, err
+	}
+	s.deps.Logger.Info("account: credentials replaced", "user_id", user.ID, "account_id", a.ID, "type", a.SourceType)
+
+	if s.deps.Syncer != nil {
+		go func(id uuid.UUID) {
+			ctx2, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			_ = s.deps.Syncer.Sync(ctx2, id)
+		}(a.ID)
+	}
+
+	return oapi.UpdateAccountCredentials200JSONResponse(toOapiAccount(a)), nil
+}
+
 func (s *serverImpl) DeleteAccount(ctx context.Context, req oapi.DeleteAccountRequestObject) (oapi.DeleteAccountResponseObject, error) {
 	user, ok := auth.UserFromContext(ctx)
 	if !ok {
@@ -1168,6 +1252,9 @@ func createAccountValidationResp(title string, fields map[string]string) oapi.Cr
 }
 func updateAccountValidationResp(title string, fields map[string]string) oapi.UpdateAccount422ApplicationProblemPlusJSONResponse {
 	return oapi.UpdateAccount422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
+}
+func updateCredentialsValidationResp(title string, fields map[string]string) oapi.UpdateAccountCredentials422ApplicationProblemPlusJSONResponse {
+	return oapi.UpdateAccountCredentials422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
 }
 func createPositionValidationResp(title string, fields map[string]string) oapi.CreatePosition422ApplicationProblemPlusJSONResponse {
 	return oapi.CreatePosition422ApplicationProblemPlusJSONResponse{ValidationErrorApplicationProblemPlusJSONResponse: validationProblem(title, fields).build()}
