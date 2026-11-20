@@ -195,9 +195,6 @@ importers:
       '@unovis/vue':
         specifier: ^1.8.1
         version: 1.8.1(@unovis/ts@1.8.1)(vue@3.5.45(typescript@6.0.3))
-      '@vee-validate/zod':
-        specifier: ^4.14.6
-        version: 4.15.1(vue@3.5.45(typescript@6.0.3))(zod@4.6.7)
       '@vue/devtools-api':
         specifier: ^8.2.1
         version: 8.2.1
@@ -1118,11 +1115,6 @@ packages:
     peerDependencies:
       '@unovis/ts': 1.8.1
       vue: ^3
-
-  '@vee-validate/zod@4.15.1':
-    resolution: {integrity: sha512-329Z4TDBE5Vx0FdbA8S4eR9iGCFFUNGbxjpQ20ff5b5wGueScjocUIx9JHPa79LTG06RnlUR4XogQsjN4tecKA==}
-    peerDependencies:
-      zod: ^3.24.0
 
   '@vitejs/plugin-vue@6.0.11':
     resolution: {integrity: sha512-m48lskIUJGlB6qUiYhDMI8nd2ngeidz2U4nKTjqI13cFMu5rH8JeEILPkDtK9Fk/TjBA2pkj8AlbenqDaKu+ww==}
@@ -3313,14 +3305,6 @@ snapshots:
     dependencies:
       '@unovis/ts': 1.8.1
       vue: 3.5.45(typescript@6.0.3)
-
-  '@vee-validate/zod@4.15.1(vue@3.5.45(typescript@6.0.3))(zod@4.6.7)':
-    dependencies:
-      type-fest: 4.41.0
-      vee-validate: 4.15.1(vue@3.5.45(typescript@6.0.3))
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - vue
 
   '@vitejs/plugin-vue@6.0.11(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))(vue@3.5.45(typescript@6.0.3))':
     dependencies:
