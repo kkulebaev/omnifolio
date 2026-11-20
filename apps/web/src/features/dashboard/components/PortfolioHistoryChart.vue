@@ -257,12 +257,6 @@ function tooltipTemplate(d: Point): string {
       <h2 class="text-xs font-semibold m-0">
         Динамика стоимости
         <span
-          v-if="showInvested"
-          class="text-muted-foreground font-normal ml-1.5"
-        >
-          · пунктир — вложено
-        </span>
-        <span
           v-if="
             history.data.value &&
             history.data.value.currentDisplayCurrency !==
