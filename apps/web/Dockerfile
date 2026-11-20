@@ -1,5 +1,5 @@
-FROM node:24.18.0-alpine AS build
-RUN corepack enable
+FROM node:26.13.1-alpine AS build
+RUN npm install -g pnpm@10.33.2
 WORKDIR /work
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
