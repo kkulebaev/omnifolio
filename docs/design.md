@@ -505,7 +505,7 @@ Admin-эндпоинты для cron-воркера живут вне OpenAPI с
 | Composables | `@vueuse/core` (см. §8.2 и `docs/vueuse.md`) |
 | Routing | vue-router (history mode) |
 | API client | orval из OpenAPI (`vue-query` client, custom fetch mutator) |
-| Forms | vee-validate + zod (`@vee-validate/zod`) |
+| Forms | ручная валидация через `ref` + `validate()` в компоненте |
 | Toasts | vue-sonner |
 | Tests | Vitest (unit + component). Playwright **отложен**. |
 | Package manager | pnpm |

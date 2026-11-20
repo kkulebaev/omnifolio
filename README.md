@@ -50,7 +50,7 @@
 | Layer        | Tech |
 | ------------ | ---- |
 | **Backend**  | Go 1.26 · chi · sqlc · pgx · goose · argon2id · AES-GCM · robfig/cron · slog |
-| **Frontend** | Vue 3 · Vite · Pinia · vue-router · TanStack Query · orval · Tailwind v4 · reka-ui · vee-validate/zod |
+| **Frontend** | Vue 3 · Vite · Pinia · vue-router · TanStack Query · orval · Tailwind v4 · reka-ui |
 | **DB**       | Postgres 18 |
 | **Contract** | OpenAPI (`api/openapi.yaml`) |
 | **Deploy**   | Railway (`api` + `web` + `cron` + managed `postgres`), GitHub auto-deploy on push to `main` |
