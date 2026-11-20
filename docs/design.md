@@ -590,7 +590,7 @@ Admin-эндпоинты для cron-воркера живут вне OpenAPI с
 | API client | orval из OpenAPI (`vue-query` client, custom fetch mutator) |
 | Forms | ручная валидация через `ref` + `validate()` в компоненте |
 | Toasts | vue-sonner |
-| Tests | Vitest (unit + component). Playwright **отложен**. |
+| Tests | Vitest Browser Mode (Chromium через `@vitest/browser-playwright`), unit + component. E2E на Playwright **отложен**. |
 | Package manager | pnpm |
 | TS | strict + noUncheckedIndexedAccess |
 

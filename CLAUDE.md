@@ -46,7 +46,7 @@ compose.yml Makefile pnpm-workspace.yaml
 make dev          # postgres + api в docker compose + web (vite, foreground)
 make services     # только бэкенд в фоне; make services-down — выключить
 make logs         # хвост логов compose
-make test         # go test ./... + vitest --run
+make test         # go test ./... + vitest --run (browser mode, Chromium)
 make generate     # sqlc + oapi-codegen + orval
 ```
 
@@ -55,6 +55,12 @@ Bootstrap-юзер берётся из `BOOTSTRAP_USER_EMAIL` / `BOOTSTRAP_USER_
 (см. `compose.yml`).
 
 В `apps/web` импорты идут через alias `@` → `src` (vite + tsconfig).
+
+Vitest работает в Browser Mode (Chromium через Playwright, jsdom нет). Один раз
+поставить браузер: `pnpm --filter web exec playwright install --only-shell chromium`.
+Спеки компонентов монтируют настоящие UI-примитивы (`attachTo: document.body`) и
+работают через `page` / `userEvent` из `vitest/browser`; стабы со строковым
+`template` в браузере рендерят пустоту (сборка Vue без компилятора).
 
 ## Codegen workflow
 

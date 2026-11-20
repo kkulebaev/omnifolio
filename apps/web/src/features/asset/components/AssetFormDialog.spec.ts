@@ -1,14 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mount, flushPromises } from "@vue/test-utils";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { page, userEvent } from "vitest/browser";
+import { mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { VueQueryPlugin } from "@tanstack/vue-query";
 import { ref } from "vue";
 import AssetFormDialog from "./AssetFormDialog.vue";
 import { HttpError } from "@/api/mutator";
-
-// ---------------------------------------------------------------------------
-// Module mocks — hoisted by vitest before imports
-// ---------------------------------------------------------------------------
 
 const mockCreate = vi.fn();
 const mockInvalidate = vi.fn();
@@ -33,44 +30,19 @@ vi.mock("@tanstack/vue-query", async (importActual) => {
   };
 });
 
-// ---------------------------------------------------------------------------
-// Stubs for UI primitives so we get real HTML elements in the DOM tree
-// ---------------------------------------------------------------------------
-
-const inputStub = {
-  inheritAttrs: false,
-  template: `<input v-bind="$attrs" :value="modelValue" @input="$emit('update:modelValue', $event.target.value)" />`,
-  props: ["modelValue"],
-  emits: ["update:modelValue", "input"],
-};
-
-const GLOBAL_STUBS = {
-  Dialog: {
-    template: '<div data-stub="dialog"><slot /></div>',
-    props: ["open"],
-    emits: ["update:open"],
-  },
-  Button: {
-    template: '<button :type="type ?? \'button\'" :disabled="disabled ?? false"><slot /></button>',
-    props: ["type", "disabled", "variant"],
-  },
-  Input: inputStub,
-  Label: { template: "<label><slot /></label>" },
-};
+let wrapper: VueWrapper | undefined;
 
 function mountDialog(extraProps: Record<string, unknown> = {}) {
-  return mount(AssetFormDialog, {
+  // Dialog телепортируется в body: без attachTo форма вне документа и локаторам page не видна.
+  wrapper = mount(AssetFormDialog, {
     props: { open: true, ...extraProps },
-    global: {
-      plugins: [createPinia(), VueQueryPlugin],
-      stubs: GLOBAL_STUBS,
-    },
+    attachTo: document.body,
+    global: { plugins: [createPinia(), VueQueryPlugin] },
   });
+  return wrapper;
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+const submit = () => userEvent.click(page.getByRole("button", { name: "Создать" }));
 
 describe("AssetFormDialog — validation", () => {
   beforeEach(() => {
@@ -78,53 +50,47 @@ describe("AssetFormDialog — validation", () => {
     mockInvalidate.mockReset();
   });
 
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
   it("shows validation errors when submitting an empty form", async () => {
-    const wrapper = mountDialog();
+    mountDialog();
 
-    await wrapper.find("form").trigger("submit");
-    await flushPromises();
+    await submit();
 
-    const html = wrapper.html();
-    // name is empty → "Обязательно, до 100 символов"
-    expect(html).toContain("Обязательно");
-    // ticker is empty → fails /^[A-Za-z0-9_-]{1,32}$/ regex
-    expect(html).toContain("Латиница");
-    // initialPrice is empty → "Укажи положительное число"
-    expect(html).toContain("Укажи положительное");
+    await expect.element(page.getByText("Обязательно, до 100 символов")).toBeVisible();
+    await expect
+      .element(page.getByText("Латиница, цифры, дефис/подчёркивание, до 32 знаков"))
+      .toBeVisible();
+    await expect.element(page.getByText("Укажи положительное число")).toBeVisible();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it("shows ticker validation error when ticker contains invalid characters", async () => {
-    const wrapper = mountDialog();
-    const inputs = wrapper.findAll("input");
+    mountDialog();
 
-    // Provide a valid name so only the ticker path is exercised
-    await inputs[0]!.setValue("My Apartment");
-    // Ticker with a space is invalid per /^[A-Za-z0-9_-]{1,32}$/
-    await inputs[1]!.setValue("AB CD");
+    await userEvent.fill(page.getByLabelText("Название"), "My Apartment");
+    await userEvent.fill(page.getByLabelText("Тикер"), "AB CD");
+    await submit();
 
-    await wrapper.find("form").trigger("submit");
-    await flushPromises();
-
-    expect(wrapper.html()).toContain("Латиница");
+    await expect
+      .element(page.getByText("Латиница, цифры, дефис/подчёркивание, до 32 знаков"))
+      .toBeVisible();
+    await expect.element(page.getByText("Обязательно, до 100 символов")).not.toBeInTheDocument();
   });
 
   it("shows conflict error on the ticker field when the API returns 409", async () => {
-    const wrapper = mountDialog();
-    const inputs = wrapper.findAll("input");
+    mockCreate.mockRejectedValueOnce(new HttpError(409, { title: "Conflict", status: 409 }));
+    mountDialog();
 
-    // inputs[0] = name, inputs[1] = ticker, inputs[2] = currency, inputs[3] = price
-    // currency (inputs[2]) is pre-filled with "RUB" from the ui store default
-    await inputs[0]!.setValue("My Apartment");
-    await inputs[1]!.setValue("MYAPT123");
-    await inputs[3]!.setValue("5000000");
+    await userEvent.fill(page.getByLabelText("Название"), "My Apartment");
+    await userEvent.fill(page.getByLabelText("Тикер"), "MYAPT123");
+    await userEvent.fill(page.getByLabelText("Начальная цена"), "5000000");
+    await submit();
 
-    mockCreate.mockRejectedValueOnce(
-      new HttpError(409, { title: "Conflict", status: 409 }),
-    );
-
-    await wrapper.find("form").trigger("submit");
-    await flushPromises();
-
-    expect(wrapper.html()).toContain("Уже есть актив с таким тикером");
+    await expect.element(page.getByText("Уже есть актив с таким тикером")).toBeVisible();
+    expect(mockCreate).toHaveBeenCalledOnce();
   });
 });
