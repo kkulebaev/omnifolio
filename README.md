@@ -5,8 +5,8 @@
 <p>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go&logoColor=white" />
   <img alt="Vue" src="https://img.shields.io/badge/Vue-3.5-42B883?style=flat-square&logo=vuedotjs&logoColor=white" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white" />
-  <img alt="Postgres" src="https://img.shields.io/badge/Postgres-16-336791?style=flat-square&logo=postgresql&logoColor=white" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6.x-3178C6?style=flat-square&logo=typescript&logoColor=white" />
+  <img alt="Postgres" src="https://img.shields.io/badge/Postgres-18-336791?style=flat-square&logo=postgresql&logoColor=white" />
   <img alt="Tailwind" src="https://img.shields.io/badge/Tailwind-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" />
   <img alt="Vite" src="https://img.shields.io/badge/Vite-8.x-646CFF?style=flat-square&logo=vite&logoColor=white" />
   <img alt="Pinia" src="https://img.shields.io/badge/Pinia-state-FFD93D?style=flat-square&logo=pinia&logoColor=black" />
@@ -50,7 +50,7 @@
 | Layer        | Tech |
 | ------------ | ---- |
 | **Backend**  | Go 1.26 · chi · sqlc · pgx · goose · argon2id · AES-GCM · robfig/cron · slog |
-| **Frontend** | Vue 3 · Vite · Pinia · vue-router · TanStack Query · orval · Tailwind v4 · radix-vue · vee-validate/zod |
+| **Frontend** | Vue 3 · Vite · Pinia · vue-router · TanStack Query · orval · Tailwind v4 · reka-ui · vee-validate/zod |
 | **DB**       | Postgres 18 |
 | **Contract** | OpenAPI (`api/openapi.yaml`) |
 | **Deploy**   | Railway (`api` + `web` + `cron` + managed `postgres`), GitHub auto-deploy on push to `main` |
