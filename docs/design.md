@@ -498,9 +498,9 @@ Admin-эндпоинты для cron-воркера живут вне OpenAPI с
 |---|---|
 | Build | Vite |
 | UI | Vue 3 (Composition API, `<script setup>`) + Tailwind v4 |
-| Component primitives | radix-vue (headless) + собственные обёртки в `components/ui/` |
-| Icons | lucide-vue-next |
-| State (client) | Pinia (v3) + `pinia-plugin-persistedstate` |
+| Component primitives | reka-ui (headless) + собственные обёртки в `components/ui/` |
+| Icons | `@lucide/vue` |
+| State (client) | Pinia (v4) + `pinia-plugin-persistedstate` |
 | State (server) | TanStack Query (vue-query v5) |
 | Composables | `@vueuse/core` (см. §8.2 и `docs/vueuse.md`) |
 | Routing | vue-router (history mode) |
@@ -517,7 +517,7 @@ Admin-эндпоинты для cron-воркера живут вне OpenAPI с
 
 UI-примитивы — небольшая собственная библиотека (`button`, `card`,
 `checkbox`, `confirm`, `dialog`, `input`, `label`, `table`) поверх
-radix-vue. Простые компоненты добавляем как тонкие обёртки вручную;
+reka-ui. Простые компоненты добавляем как тонкие обёртки вручную;
 для сложных (например `chart`, который тянет `@unovis/ts` и `@unovis/vue`)
 допускаем `npx shadcn-vue@latest add <name>` — он подтягивает нужные
 зависимости и shadcn-style обёртки в `components/ui/`. Полный
