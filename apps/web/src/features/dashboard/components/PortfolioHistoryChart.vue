@@ -140,6 +140,11 @@ const isEmpty = computed(
   () => !history.isLoading.value && points.value.length === 0,
 );
 
+// The lowest series (usually «вложено») has to clear the x-label strip,
+// so the bottom padding is sized to land it at ~22% of the plot height.
+const PAD_BOTTOM = 0.3;
+const PAD_TOP = 0.08;
+
 const yDomain = computed<[number, number] | undefined>(() => {
   const pts = points.value;
   if (pts.length === 0) return undefined;
@@ -154,9 +159,11 @@ const yDomain = computed<[number, number] | undefined>(() => {
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return undefined;
   const span = max - min;
-  const padding =
-    span > 0 ? span * 0.03 : Math.max(Math.abs(max) * 0.01, 1);
-  return [min - padding, max + padding];
+  if (span <= 0) {
+    const padding = Math.max(Math.abs(max) * 0.01, 1);
+    return [min - padding, max + padding];
+  }
+  return [min - span * PAD_BOTTOM, max + span * PAD_TOP];
 });
 
 const formatYTick = computed(() => {
@@ -174,7 +181,7 @@ const yTicks = computed<number[]>(() => {
   const span = d[1] - d[0];
   if (span <= 0) return [];
   const cutoff = d[0] + span * (X_LABEL_RESERVE_PCT / 100);
-  return niceTicks(d[0], d[1], 4)
+  return niceTicks(d[0], d[1], 5)
     .filter((t) => t > cutoff && t < d[1])
     .reverse();
 });
