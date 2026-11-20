@@ -4,7 +4,6 @@
     "config:recommended"
   ],
   "semanticCommits": "enabled",
-  "semanticCommitType": "build",
   "minimumReleaseAge": "1 day",
   "internalChecksFilter": "strict",
   "platformAutomerge": false,
@@ -37,6 +36,13 @@
     }
   ],
   "packageRules": [
+    {
+      "description": "config:recommended sets fix/chore via packageRules, which override a repo-level semanticCommitType; dependency bumps here are build changes",
+      "matchPackageNames": [
+        "*"
+      ],
+      "semanticCommitType": "build"
+    },
     {
       "description": "Keep package.json ranges in step with the lockfile; other managers (go directive, setup-go) keep the default so 1.27 is not pinned to a patch",
       "matchManagers": [
