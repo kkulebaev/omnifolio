@@ -49,7 +49,7 @@ seed-reset: ## Wipe dev seed data for the bootstrap user
 		DELETE FROM deposits WHERE user_id = (SELECT id FROM users WHERE email = 'dev@local.test');"
 
 generate: ## Regenerate sqlc + oapi-codegen + orval clients
-	$(COMPOSE) run --rm --no-deps api sh -c "sqlc generate && cd internal/server/oapi && go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.2 --config=config.yaml /workspace/api/openapi.yaml"
+	$(COMPOSE) run --rm --no-deps api sh -c "sqlc generate && cd internal/server/oapi && go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.9.0 --config=config.yaml /workspace/api/openapi.yaml"
 	pnpm --filter web generate
 
 test: ## Run tests (api + web)
