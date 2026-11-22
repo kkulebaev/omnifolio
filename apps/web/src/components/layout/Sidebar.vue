@@ -138,15 +138,15 @@ const userInitials = computed(() => {
           @click="navigate"
           class="w-full text-left flex flex-col cursor-pointer bg-transparent border-none text-inherit px-2 py-1.5 gap-1 rounded-sm"
         >
-          <div class="flex justify-between text-xs">
-            <span class="overflow-hidden text-ellipsis whitespace-nowrap">
+          <div class="flex w-full justify-between gap-2 text-xs">
+            <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
               {{ a.shortName }}
             </span>
-            <span class="num text-muted-foreground text-xs">
+            <span class="num shrink-0 text-muted-foreground text-xs">
               {{ (a.share * 100).toFixed(0) }}%
             </span>
           </div>
-          <div class="h-0.5 bg-soft rounded-xs overflow-hidden">
+          <div class="h-0.5 w-full bg-soft rounded-xs overflow-hidden">
             <div
               class="h-full bg-accent opacity-70"
               :style="{ width: `${a.share * 100}%` }"
