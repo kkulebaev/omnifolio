@@ -21,7 +21,7 @@
     "@unovis/ts": "^1.8.1",
     "@unovis/vue": "^1.8.1",
     "@vue/devtools-api": "^8.2.1",
-    "@vueuse/core": "^15.0.0",
+    "@vueuse/core": "^15.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "pinia": "^4.1.0",
