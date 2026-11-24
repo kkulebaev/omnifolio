@@ -187,8 +187,8 @@ importers:
         specifier: ^1.76.0
         version: 1.76.0(vue@3.5.45(typescript@6.0.3))
       '@tanstack/vue-query':
-        specifier: ^5.108.1
-        version: 5.108.1(vue@3.5.45(typescript@6.0.3))
+        specifier: ^5.108.4
+        version: 5.108.4(vue@3.5.45(typescript@6.0.3))
       '@unovis/ts':
         specifier: ^1.8.1
         version: 1.8.1
@@ -246,7 +246,7 @@ importers:
         version: 2.6.0(@vue/compiler-dom@3.5.45)(@vue/server-renderer@3.5.45)(vue@3.5.45(typescript@6.0.3))
       orval:
         specifier: ^8.48.0
-        version: 8.48.0(@tanstack/vue-query@5.108.1(vue@3.5.45(typescript@6.0.3)))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3))(zod@4.6.7)
+        version: 8.48.0(@tanstack/vue-query@5.108.4(vue@3.5.45(typescript@6.0.3)))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3))(zod@4.6.7)
       playwright:
         specifier: ^1.65.1
         version: 1.65.1
@@ -961,14 +961,14 @@ packages:
     resolution: {integrity: sha512-DIpUSOhPfQ7u/qfUi/Wgm0wBO56MyBYXGvnlI0NcauDRPqdBUlAZZjW2Dxm92m+k1UWVhKw8YJ4f47+75Aujyw==}
     engines: {node: '>=20'}
 
-  '@tanstack/query-core@5.108.1':
-    resolution: {integrity: sha512-GBX6Xsc9E+9eVLLxuM7orQNbssQjpruOCbocBYwT78MjxOWT5I+CWdvEo0N+UM6+oCZEKxuSud1oFLvE3OEmIg==}
+  '@tanstack/query-core@5.108.4':
+    resolution: {integrity: sha512-2Ks5dlLWz4eXJrthOyG0qW3SLt3xx0RrQmAmN0rnmogiaaOYuWiAe6HAm9KE2b2v8nig+vraNz8fsfZ6fF6zFg==}
 
   '@tanstack/virtual-core@3.17.8':
     resolution: {integrity: sha512-BfEvehNpOT75r5Ksc5xW6NZuXujTfb7nlSEyVu4XHG3gdxNg1KqXruWbDewXOUaUYIo4oRbSfkjIajz4MAT8tA==}
 
-  '@tanstack/vue-query@5.108.1':
-    resolution: {integrity: sha512-dkBQ9rEPmQ353xLiWixKJh6FBf91CuoiE2XIad9iecCo7se5SN2CCr+sA0zU4SMlkzz1B9fiDchszNM2RAF4pg==}
+  '@tanstack/vue-query@5.108.4':
+    resolution: {integrity: sha512-yvvIjGz3g8vxN+CCBFS7HC6o+RtIsMtgTQFbXsxxeNjOro219CT+55peW6APpGlkxU9FZGIVy6KuNgWlL7agnQ==}
     peerDependencies:
       '@vue/composition-api': ^1.1.2
       vue: ^2.6.0 || ^3.3.0
@@ -2839,12 +2839,12 @@ snapshots:
       - '@faker-js/faker'
       - '@modelcontextprotocol/server'
 
-  '@orval/query@8.48.0(@tanstack/vue-query@5.108.1(vue@3.5.45(typescript@6.0.3)))':
+  '@orval/query@8.48.0(@tanstack/vue-query@5.108.4(vue@3.5.45(typescript@6.0.3)))':
     dependencies:
       '@orval/core': 8.48.0
       '@orval/fetch': 8.48.0
     optionalDependencies:
-      '@tanstack/vue-query': 5.108.1(vue@3.5.45(typescript@6.0.3))
+      '@tanstack/vue-query': 5.108.4(vue@3.5.45(typescript@6.0.3))
     transitivePeerDependencies:
       - '@faker-js/faker'
       - '@modelcontextprotocol/server'
@@ -3106,14 +3106,14 @@ snapshots:
     dependencies:
       remove-accents: 0.5.0
 
-  '@tanstack/query-core@5.108.1': {}
+  '@tanstack/query-core@5.108.4': {}
 
   '@tanstack/virtual-core@3.17.8': {}
 
-  '@tanstack/vue-query@5.108.1(vue@3.5.45(typescript@6.0.3))':
+  '@tanstack/vue-query@5.108.4(vue@3.5.45(typescript@6.0.3))':
     dependencies:
       '@tanstack/match-sorter-utils': 9.2.6
-      '@tanstack/query-core': 5.108.1
+      '@tanstack/query-core': 5.108.4
       '@vue/devtools-api': 6.6.4
       vue: 3.5.45(typescript@6.0.3)
       vue-demi: 0.14.10(vue@3.5.45(typescript@6.0.3))
@@ -4189,7 +4189,7 @@ snapshots:
 
   ohash@2.0.12: {}
 
-  orval@8.48.0(@tanstack/vue-query@5.108.1(vue@3.5.45(typescript@6.0.3)))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3))(zod@4.6.7):
+  orval@8.48.0(@tanstack/vue-query@5.108.4(vue@3.5.45(typescript@6.0.3)))(typedoc-plugin-markdown@4.11.0(typedoc@0.28.19(typescript@6.0.3)))(typedoc@0.28.19(typescript@6.0.3))(zod@4.6.7):
     dependencies:
       '@commander-js/extra-typings': 15.0.0(commander@15.0.0)
       '@orval/angular': 8.48.0
@@ -4201,7 +4201,7 @@ snapshots:
       '@orval/mcp': 8.48.0(zod@4.6.7)
       '@orval/mock': 8.48.0
       '@orval/pinia-colada': 8.48.0
-      '@orval/query': 8.48.0(@tanstack/vue-query@5.108.1(vue@3.5.45(typescript@6.0.3)))
+      '@orval/query': 8.48.0(@tanstack/vue-query@5.108.4(vue@3.5.45(typescript@6.0.3)))
       '@orval/solid-start': 8.48.0
       '@orval/swr': 8.48.0
       '@orval/valibot': 8.48.0
